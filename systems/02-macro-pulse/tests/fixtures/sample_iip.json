@@ -1,0 +1,15 @@
+{
+  "reference_month": "2025-01",
+  "release_date": "2025-03-28",
+  "headline_yoy": 5.0,
+  "manufacturing_yoy": 5.5,
+  "mining_yoy": 4.4,
+  "electricity_yoy": 5.3,
+  "capital_goods_yoy": 8.2,
+  "consumer_durables_yoy": 12.1,
+  "consumer_nondurables_yoy": 2.3,
+  "infra_construction_yoy": 7.8,
+  "primary_goods_yoy": 4.1,
+  "intermediate_goods_yoy": 3.9,
+  "source": "fixture"
+}
