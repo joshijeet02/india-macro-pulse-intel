@@ -1,0 +1,77 @@
+import streamlit as st
+import os
+from db.store import CPIStore, IIPStore, BriefStore
+from ai.flash_brief import generate_cpi_brief, generate_iip_brief
+
+
+def render_brief_section():
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    brief_store = BriefStore()
+    cpi_store = CPIStore()
+    iip_store = IIPStore()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("CPI Flash Brief")
+        latest_cpi = cpi_store.get_latest()
+        saved_brief = brief_store.get_latest("CPI")
+
+        if saved_brief:
+            st.caption(f"Generated for {saved_brief['reference_month']} · {saved_brief['generated_at'][:10]}")
+            st.markdown(saved_brief["brief_text"])
+
+        if latest_cpi:
+            if api_key:
+                if st.button("Generate CPI Brief", key="gen_cpi"):
+                    with st.spinner("Generating analysis..."):
+                        try:
+                            brief = generate_cpi_brief(
+                                reference_month=latest_cpi["reference_month"],
+                                headline_yoy=latest_cpi["headline_yoy"],
+                                food_yoy=latest_cpi.get("food_yoy") or 0.0,
+                                fuel_yoy=latest_cpi.get("fuel_yoy") or 0.0,
+                                consensus=latest_cpi.get("consensus_forecast") or latest_cpi["headline_yoy"],
+                            )
+                            brief_store.save("CPI", latest_cpi["reference_month"], brief)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Brief generation failed: {e}")
+            else:
+                st.info("Set ANTHROPIC_API_KEY to enable flash brief generation.")
+        else:
+            st.warning("No CPI data loaded.")
+
+    with col2:
+        st.subheader("IIP Flash Brief")
+        latest_iip = iip_store.get_latest()
+        saved_iip_brief = brief_store.get_latest("IIP")
+
+        if saved_iip_brief:
+            st.caption(f"Generated for {saved_iip_brief['reference_month']} · {saved_iip_brief['generated_at'][:10]}")
+            st.markdown(saved_iip_brief["brief_text"])
+
+        if latest_iip:
+            if api_key:
+                if st.button("Generate IIP Brief", key="gen_iip"):
+                    with st.spinner("Generating analysis..."):
+                        try:
+                            brief = generate_iip_brief(
+                                reference_month=latest_iip["reference_month"],
+                                headline_yoy=latest_iip["headline_yoy"],
+                                capital_goods=latest_iip.get("capital_goods_yoy") or 0.0,
+                                consumer_durables=latest_iip.get("consumer_durables_yoy") or 0.0,
+                                consumer_nondurables=latest_iip.get("consumer_nondurables_yoy") or 0.0,
+                                infra_construction=latest_iip.get("infra_construction_yoy") or 0.0,
+                                primary_goods=latest_iip.get("primary_goods_yoy") or 0.0,
+                                intermediate_goods=latest_iip.get("intermediate_goods_yoy") or 0.0,
+                                consensus=latest_iip.get("consensus_forecast") or latest_iip["headline_yoy"],
+                            )
+                            brief_store.save("IIP", latest_iip["reference_month"], brief)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Brief generation failed: {e}")
+            else:
+                st.info("Set ANTHROPIC_API_KEY to enable flash brief generation.")
+        else:
+            st.warning("No IIP data loaded.")
