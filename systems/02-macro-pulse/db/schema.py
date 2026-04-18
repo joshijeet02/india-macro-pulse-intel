@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS spf_consensus (
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
-    conn.executescript(SCHEMA)
-    conn.commit()
-    conn.close()
+    try:
+        conn.executescript(SCHEMA)
+    finally:
+        conn.close()

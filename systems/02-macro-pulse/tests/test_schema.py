@@ -1,8 +1,4 @@
 import sqlite3
-import tempfile
-import os
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import init_db, DB_PATH
 
@@ -15,9 +11,11 @@ def test_init_db_creates_tables(tmp_path, monkeypatch):
     init_db()
 
     conn = sqlite3.connect(test_db)
-    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = {row[0] for row in cursor.fetchall()}
-    conn.close()
+    try:
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0] for row in cursor.fetchall()}
+    finally:
+        conn.close()
 
     assert "cpi_releases" in tables
     assert "iip_releases" in tables
