@@ -1,6 +1,6 @@
 import pytest
 from db.schema import init_db
-from db.store import CPIStore, IIPStore
+from db.store import CPIStore, IIPStore, BriefStore
 
 
 @pytest.fixture
@@ -89,3 +89,46 @@ def test_iip_store_upsert_and_get_latest(db):
     row = store.get_latest()
     assert row["headline_yoy"] == pytest.approx(5.0)
     assert row["capital_goods_yoy"] == pytest.approx(8.2)
+
+
+def test_brief_store_save_and_get_latest(db):
+    store = BriefStore()
+    store.save("CPI", "2025-02", "March CPI came in at 3.61%, a significant beat...")
+    result = store.get_latest("CPI")
+    assert result["release_type"] == "CPI"
+    assert result["reference_month"] == "2025-02"
+    assert "3.61%" in result["brief_text"]
+
+
+def test_brief_store_get_latest_returns_none_when_empty(db):
+    store = BriefStore()
+    assert store.get_latest("CPI") is None
+
+
+def test_iip_store_get_history(db):
+    store = IIPStore()
+    for month, val in [("2025-01", 5.0), ("2024-12", 3.2)]:
+        store.upsert({
+            "release_date": "2025-01-01",
+            "reference_month": month,
+            "headline_yoy": val,
+            "manufacturing_yoy": None,
+            "mining_yoy": None,
+            "electricity_yoy": None,
+            "capital_goods_yoy": None,
+            "consumer_durables_yoy": None,
+            "consumer_nondurables_yoy": None,
+            "infra_construction_yoy": None,
+            "primary_goods_yoy": None,
+            "intermediate_goods_yoy": None,
+            "consensus_forecast": None,
+        })
+    history = store.get_history(months=12)
+    assert len(history) == 2
+    assert history[0]["reference_month"] == "2024-12"  # oldest first
+    assert history[-1]["headline_yoy"] == pytest.approx(5.0)
+
+
+def test_cpi_store_get_latest_returns_none_when_empty(db):
+    store = CPIStore()
+    assert store.get_latest() is None
