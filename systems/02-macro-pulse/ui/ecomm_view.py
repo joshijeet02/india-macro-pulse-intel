@@ -81,7 +81,7 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
                 st.session_state["scrape_msg"] = [("error", f"History generation failed: Ensure you run a live scrape first. ({exc})")]
         st.rerun()
 
-    # ── Data display ─────────────────────────────────────────────────────────
+    # ── Guard: no data yet ────────────────────────────────────────────────────
     if not store.has_data():
         st.info(
             "No price data yet. Click **Run Price Scrape** above — it takes ~2–3 minutes. "
@@ -91,22 +91,40 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
             _render_basket_reference()
         return
 
-    st.subheader("Current Basket Prices")
-    _render_price_table(store)
+    # ── Alpha Signal ──────────────────────────────────────────────────────
+    _render_alpha_signal()
 
+    # ── 180-Day Index History Chart ───────────────────────────────────────────
+    _render_cpi_overlay(store)
+
+    # ── Index Metrics ─────────────────────────────────────────────────────────
     st.subheader("Composite Price Level Index (Laspeyres, base = 100)")
     _render_index_cards(store)
 
+    # ── Sub-Group Bar Chart ───────────────────────────────────────────────────
     st.subheader("Price Change by CPI Food Sub-Group (%)")
     _render_group_chart(store)
 
-    _render_cpi_overlay(store)
+    # ── Price Table ───────────────────────────────────────────────────────────
+    st.subheader("Current Basket Prices")
+    _render_price_table(store)
 
     with st.expander("Basket composition (20 items)"):
         _render_basket_reference()
 
 
 # ────────────────────────────────────────────────────────────────────────────
+
+def _render_alpha_signal():
+    """Calls assessments engine and renders the alpha signal prominently at tab top."""
+    from engine.assessments import _cpi_alpha_signal
+    _TONE_FN = {"success": st.success, "info": st.info, "warning": st.warning, "error": st.error}
+    try:
+        signal_text, tone = _cpi_alpha_signal()
+        st.subheader("📡 Proprietary Alpha Signal")
+        _TONE_FN.get(tone, st.info)(signal_text)
+    except Exception as e:
+        st.info(f"📡 Proprietary Alpha Signal unavailable: {e}")
 
 def _render_price_table(store: EcommStore):
     am_prices = {r["item_id"]: r for r in store.get_latest_prices("amazon")}
