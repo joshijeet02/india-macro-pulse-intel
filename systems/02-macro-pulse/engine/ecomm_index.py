@@ -95,7 +95,7 @@ def group_summary(components: list[dict]) -> list[dict]:
     return sorted(result, key=lambda x: x["avg_pct_change"], reverse=True)
 
 
-def run_scrape_and_store(platforms: list[str] = ("blinkit", "zepto")) -> dict[str, dict]:
+def run_scrape_and_store(platforms: list[str] = ("amazon", "jiomart")) -> dict[str, dict]:
     """
     Convenience runner: scrape both platforms, store raw prices, compute+store index.
     Returns dict {platform: index_result}.
@@ -108,12 +108,12 @@ def run_scrape_and_store(platforms: list[str] = ("blinkit", "zepto")) -> dict[st
 
     for platform in platforms:
         try:
-            if platform == "blinkit":
-                from scrapers.blinkit import scrape_blinkit
-                raw = scrape_blinkit(BASKET)
-            elif platform == "zepto":
-                from scrapers.zepto import scrape_zepto
-                raw = scrape_zepto(BASKET)
+            if platform == "amazon":
+                from scrapers.amazon import scrape_amazon
+                raw = scrape_amazon(BASKET)
+            elif platform == "jiomart":
+                from scrapers.jiomart import scrape_jiomart
+                raw = scrape_jiomart(BASKET)
             else:
                 continue
         except Exception as exc:

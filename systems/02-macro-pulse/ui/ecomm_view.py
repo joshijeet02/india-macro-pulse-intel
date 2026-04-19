@@ -18,7 +18,7 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
         "sub-groups in real-time, providing a leading signal 15-30 days before official MOSPI releases."
     )
     st.markdown(
-        "**Engine Details** · Blinkit & Zepto basket tracker · "
+        "**Engine Details** · Amazon & JioMart basket tracker · "
         "Delhi (110001) · Laspeyres index (base = first scrape)"
     )
 
@@ -34,10 +34,10 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     with col_btn:
         run_scrape = st.button("Run Price Scrape", type="primary")
     with col_status:
-        bl_last = store.last_scraped_at("blinkit")
-        zt_last = store.last_scraped_at("zepto")
-        if bl_last or zt_last:
-            st.caption(f"Last scraped · Blinkit: {bl_last or '—'} · Zepto: {zt_last or '—'}")
+        am_last = store.last_scraped_at("amazon")
+        jm_last = store.last_scraped_at("jiomart")
+        if am_last or jm_last:
+            st.caption(f"Last scraped · Amazon: {am_last or '—'} · JioMart: {jm_last or '—'}")
         else:
             st.caption("No scrape data yet. Click **Run Price Scrape** to collect prices.")
 
@@ -49,10 +49,10 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     # ── Run scrape — save to session_state, THEN rerun ───────────────────────
     if run_scrape:
         msgs = []
-        with st.spinner("Scraping Blinkit & Zepto (2–3 min)…"):
+        with st.spinner("Scraping Amazon & JioMart (2–3 min)…"):
             from engine.ecomm_index import run_scrape_and_store
             try:
-                results = run_scrape_and_store(platforms=["blinkit", "zepto"])
+                results = run_scrape_and_store(platforms=["amazon", "jiomart"])
                 for platform, idx in results.items():
                     if "error" in idx:
                         msgs.append(("error", f"**{platform.title()}:** {idx['error']}"))
@@ -72,7 +72,7 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     if not store.has_data():
         st.info(
             "No price data yet. Click **Run Price Scrape** above — it takes ~2–3 minutes. "
-            "The scraper uses a headless Chromium browser to check Blinkit and Zepto prices."
+            "The scraper uses a headless Chromium browser to check Amazon and JioMart prices."
         )
         with st.expander("Basket composition (20 items)"):
             _render_basket_reference()
@@ -96,23 +96,23 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
 # ────────────────────────────────────────────────────────────────────────────
 
 def _render_price_table(store: EcommStore):
-    bl_prices = {r["item_id"]: r for r in store.get_latest_prices("blinkit")}
-    zt_prices = {r["item_id"]: r for r in store.get_latest_prices("zepto")}
+    am_prices = {r["item_id"]: r for r in store.get_latest_prices("amazon")}
+    jm_prices = {r["item_id"]: r for r in store.get_latest_prices("jiomart")}
 
     rows = []
     for item in BASKET:
         iid = item["item_id"]
-        bl = bl_prices.get(iid)
-        zt = zt_prices.get(iid)
+        am = am_prices.get(iid)
+        jm = jm_prices.get(iid)
         row = {
             "Item":        item["name"],
             "CPI Group":   item["cpi_group"],
             "Unit":        item["unit"],
-            "Blinkit (₹)": f"₹{bl['price']:.0f}" if bl else "—",
-            "Zepto (₹)":   f"₹{zt['price']:.0f}" if zt else "—",
+            "Amazon (₹)":   f"₹{am['price']:.0f}" if am else "—",
+            "JioMart (₹)":  f"₹{jm['price']:.0f}" if jm else "—",
         }
-        if bl and zt:
-            diff = zt["price"] - bl["price"]
+        if am and jm:
+            diff = jm["price"] - am["price"]
             row["Diff (₹)"] = f"{diff:+.0f}"
         else:
             row["Diff (₹)"] = "—"
@@ -123,7 +123,7 @@ def _render_price_table(store: EcommStore):
 
 def _render_index_cards(store: EcommStore):
     cols = st.columns(2)
-    for col, platform in zip(cols, ["blinkit", "zepto"]):
+    for col, platform in zip(cols, ["amazon", "jiomart"]):
         history = store.get_index_history(platform, limit=2)
         if not history:
             col.metric(platform.title(), "—", help="No data yet")
@@ -141,7 +141,7 @@ def _render_index_cards(store: EcommStore):
 
 def _render_group_chart(store: EcommStore):
     all_components = []
-    for platform in ["blinkit", "zepto"]:
+    for platform in ["amazon", "jiomart"]:
         latest = store.get_latest_prices(platform)
         base   = store.get_base_prices(platform)
         if not latest or not base:
@@ -156,7 +156,7 @@ def _render_group_chart(store: EcommStore):
         return
 
     summary_rows = []
-    for platform in ["blinkit", "zepto"]:
+    for platform in ["amazon", "jiomart"]:
         comps = [c for c in all_components if c["platform"] == platform]
         for g in group_summary(comps):
             summary_rows.append({
@@ -172,20 +172,20 @@ def _render_group_chart(store: EcommStore):
 
 
 def _render_cpi_overlay(store: EcommStore):
-    bl_history = store.get_index_history("blinkit", limit=90)
-    zt_history = store.get_index_history("zepto",   limit=90)
-    if not bl_history and not zt_history:
+    am_history = store.get_index_history("amazon", limit=90)
+    jm_history = store.get_index_history("jiomart", limit=90)
+    if not am_history and not jm_history:
         return
 
     st.subheader("Basket Index Over Time vs CPI Food")
 
     index_rows: dict = {}
-    for row in bl_history:
+    for row in am_history:
         dt = row["computed_at"][:10]
-        index_rows.setdefault(dt, {})["Blinkit Index"] = row["index_value"]
-    for row in zt_history:
+        index_rows.setdefault(dt, {})["Amazon Index"] = row["index_value"]
+    for row in jm_history:
         dt = row["computed_at"][:10]
-        index_rows.setdefault(dt, {})["Zepto Index"] = row["index_value"]
+        index_rows.setdefault(dt, {})["JioMart Index"] = row["index_value"]
 
     idx_df = pd.DataFrame.from_dict(index_rows, orient="index").sort_index()
     idx_df.index.name = "Date"
