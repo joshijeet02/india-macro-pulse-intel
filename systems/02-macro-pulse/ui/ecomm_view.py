@@ -12,15 +12,17 @@ from engine.ecomm_index import compute_index, group_summary
 def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     store = EcommStore()
 
-    st.info(
-        "**Proprietary Intelligence:** This High-Frequency Pulse Index is a custom composite "
-        "measure of urban food inflation. It tracks a fixed basket of 20 items across 9 CPI "
-        "sub-groups in real-time, providing a leading signal 15-30 days before official MOSPI releases."
-    )
     st.markdown(
         "**Engine Details** · Amazon Pulse basket tracker · "
         "Delhi (110001) · Laspeyres index (base = fixed)"
     )
+
+    st.success(
+        "**Methodology & Logic:** Traditional CPI data is released with a 15-to-45 day lag. "
+        "To generate a leading indicator (alpha), we autonomously scrape real-time prices for 20 high-weight grocery items directly from Amazon India. "
+        "By applying a Laspeyres index formula (comparing current aggregated costs against a fixed base-period cost), we can anticipate the food inflation vector weeks before MOSPI publishes official data."
+    )
+
 
     # ── Playwright status warning ────────────────────────────────────────────
     if not pw_ready:
@@ -30,9 +32,11 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
         )
 
     # ── Scrape controls ──────────────────────────────────────────────────────
-    col_btn, col_status = st.columns([1, 3])
+    col_btn, col_btn2, col_status = st.columns([1, 1.5, 2.5])
     with col_btn:
         run_scrape = st.button("Run Price Scrape", type="primary")
+    with col_btn2:
+        run_history = st.button("Simulate 180-Day History", help="Retro-calculates a 6-month index trend based on today's anchor prices for demonstration.")
     with col_status:
         am_last = store.last_scraped_at("amazon")
         if am_last:
@@ -65,6 +69,16 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
             except Exception as exc:
                 msgs.append(("error", f"Scrape failed: {exc}"))
         st.session_state["scrape_msg"] = msgs
+        st.rerun()
+
+    if run_history:
+        with st.spinner("Generating 180 days of simulated trend data..."):
+            try:
+                from seed.amazon_history import seed_historic_amazon
+                seed_historic_amazon()
+                st.session_state["scrape_msg"] = [("success", "Successfully back-propagated 180 days of historical index data!")]
+            except Exception as exc:
+                st.session_state["scrape_msg"] = [("error", f"History generation failed: Ensure you run a live scrape first. ({exc})")]
         st.rerun()
 
     # ── Data display ─────────────────────────────────────────────────────────

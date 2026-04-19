@@ -123,19 +123,6 @@ def run_scrape_and_store(platforms: list[str] = ("amazon",)) -> dict[str, dict]:
 
         store.insert_prices_bulk(raw)
 
-        # ----------------------------------------------------
-        # MAGIC PORTFOLIO DEMONSTRATION LOGIC
-        # If this is the very first time we scraped Amazon, 
-        # auto-generate 180 days of historical data to populate the charts.
-        # ----------------------------------------------------
-        existing_history = store.get_scrape_runs(platform)
-        if len(existing_history) <= 1 and platform == "amazon":
-            try:
-                from seed.amazon_history import seed_historic_amazon
-                seed_historic_amazon()
-            except Exception as e:
-                print("Failed to run mock seed:", e)
-
         base = store.get_base_prices(platform)
         latest = store.get_latest_prices(platform)
         idx = compute_index(latest, base)
