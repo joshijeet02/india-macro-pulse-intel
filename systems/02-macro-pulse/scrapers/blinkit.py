@@ -37,7 +37,15 @@ def scrape_blinkit(basket_items: list[dict]) -> list[dict]:
     scraped_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        )
         ctx = browser.new_context(
             user_agent=_UA,
             locale="en-IN",

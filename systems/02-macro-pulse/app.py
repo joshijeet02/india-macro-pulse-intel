@@ -1,7 +1,21 @@
 import streamlit as st
+# Trigger redeploy: 2026-04-19 19:40
 import os
 import sys
+import subprocess
 sys.path.insert(0, os.path.dirname(__file__))
+
+
+@st.cache_resource(show_spinner=False)
+def _install_playwright_browser():
+    """Install Playwright's Chromium binary once per container lifecycle."""
+    subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "chromium"],
+        capture_output=True,
+    )
+
+
+_install_playwright_browser()
 
 from db.schema import init_db
 from db.store import CPIStore
