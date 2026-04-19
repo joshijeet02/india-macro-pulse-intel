@@ -158,9 +158,11 @@ def assess_cpi(history: list[dict]) -> dict:
 
 
 def _cpi_alpha_signal() -> tuple[str, str]:
-    from db.store import EcommStore
-    store = EcommStore()
-    am_history = store.get_index_history("amazon", limit=4)
+    from db.store import EcommStore, CPIStore
+    ecomm_store = EcommStore()
+    cpi_store   = CPIStore()
+
+    am_history = ecomm_store.get_index_history("amazon", limit=4)
 
     if not am_history:
         return (
@@ -169,44 +171,71 @@ def _cpi_alpha_signal() -> tuple[str, str]:
             "info"
         )
 
-    latest = am_history[-1]
-    avg_idx = latest["index_value"]
-    coverage = latest["coverage_pct"]
-
-    # Compute trend: compare latest to earliest available in this window
+    latest    = am_history[-1]
+    avg_idx   = latest["index_value"]
+    coverage  = latest["coverage_pct"]
     trend_pts = avg_idx - am_history[0]["index_value"] if len(am_history) > 1 else 0
 
-    if avg_idx > 108:
-        signal = (
-            f"🔴 Proprietary Pulse ALERT — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
-            f"A {avg_idx - 100:.1f}pt surge above base signals acute food cost escalation — "
-            f"this is a leading indicator of a potential CPI Food upside surprise in the next MOSPI release."
-        )
-        tone = "error"
-    elif avg_idx > 103:
-        signal = (
-            f"🟡 Proprietary Pulse ELEVATED — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
-            f"Prices are running {avg_idx - 100:.1f}pts above base. Combined with a "
-            f"{'rising' if trend_pts > 0 else 'flat'} trend, this suggests mild food cost pressure "
-            f"building ahead of the official MOSPI data window."
-        )
-        tone = "warning"
-    elif avg_idx < 98:
-        signal = (
-            f"🟢 Proprietary Pulse SOFT — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
-            f"Urban food prices are running below base, indicating demand softness or supply easing. "
-            f"This is a leading disinflationary signal and supports a favourable CPI food print."
-        )
-        tone = "success"
-    else:
-        signal = (
-            f"✅ Proprietary Pulse STABLE — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
-            f"Urban food prices are holding steady with no significant divergence from base. "
-            f"No upstream price pressure detected 15-30 days ahead of the next MOSPI release."
-        )
-        tone = "success"
+    # Cross-reference with official food CPI
+    cpi_history  = cpi_store.get_history(months=3)
+    official_food_yoy = None
+    if cpi_history:
+        for r in reversed(cpi_history):
+            if r.get("food_yoy") is not None:
+                official_food_yoy = r["food_yoy"]
+                break
 
-    return signal, tone
+    basket_pct_above_base = avg_idx - 100  # how far above base our basket is
+
+    # --- Divergence logic ---
+    # Official food CPI measures YoY at the national level (urban+rural, lagged ~45 days).
+    # Our Amazon basket measures current urban formal-retail prices vs a ~180-day fixed base.
+    # These are NOT the same: divergence between the two is the actual alpha signal.
+
+    if official_food_yoy is not None and official_food_yoy < 0 and basket_pct_above_base > 3:
+        # DIVERGENCE: official is deflationary, but urban formal prices are rising
+        return (
+            f"🟡 Proprietary Pulse DIVERGENCE DETECTED — Amazon Basket Index at {avg_idx:.1f} "
+            f"(+{basket_pct_above_base:.1f}pts above fixed base, {coverage:.0f}% coverage) while official "
+            f"Food CPI is {official_food_yoy:+.2f}% YoY. This divergence — urban formal prices rising "
+            f"as aggregate official data turns deflationary — reflects probable rural supply easing and/or "
+            f"base effects masking urban food cost pressure. A potential upward correction in future prints.",
+            "warning"
+        )
+
+    if official_food_yoy is not None and official_food_yoy < 0 and basket_pct_above_base <= 3:
+        # Both official and basket agree: price environment is soft
+        return (
+            f"✅ Proprietary Pulse CONFIRMS DISINFLATION — Amazon Basket Index at {avg_idx:.1f} "
+            f"(+{basket_pct_above_base:.1f}pts above fixed base, {coverage:.0f}% coverage), consistent with "
+            f"official Food CPI of {official_food_yoy:+.2f}% YoY. Urban formal grocery prices reflect "
+            f"the same benign inflation environment. No leading signal of a forthcoming food price reversal.",
+            "success"
+        )
+
+    if avg_idx > 108:
+        return (
+            f"🔴 Proprietary Pulse ALERT — Amazon Basket Index at {avg_idx:.1f} "
+            f"(+{basket_pct_above_base:.1f}pts above fixed base, {coverage:.0f}% coverage). "
+            f"A {'rising' if trend_pts > 0 else 'sustained'} urban food cost escalation signals "
+            f"a potential CPI Food upside surprise in the next MOSPI release.",
+            "error"
+        )
+    if avg_idx > 103:
+        return (
+            f"🟡 Proprietary Pulse ELEVATED — Amazon Basket Index at {avg_idx:.1f} "
+            f"({basket_pct_above_base:.1f}pts above fixed base, {coverage:.0f}% coverage). "
+            f"Mild urban food cost pressure building, consistent with a {'rising' if trend_pts > 0 else 'flat'} trend. "
+            f"Monitor for acceleration ahead of the next MOSPI release.",
+            "warning"
+        )
+
+    return (
+        f"✅ Proprietary Pulse STABLE — Amazon Basket Index at {avg_idx:.1f} "
+        f"({basket_pct_above_base:.1f}pts from fixed base, {coverage:.0f}% coverage). "
+        f"No significant urban price pressure detected 15-30 days ahead of next MOSPI release.",
+        "success"
+    )
 
 
 
