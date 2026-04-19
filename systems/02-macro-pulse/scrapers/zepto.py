@@ -33,7 +33,15 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
     scraped_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        )
         ctx = browser.new_context(
             user_agent=_UA,
             locale="en-IN",
@@ -54,7 +62,7 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
         page.on("response", _on_response)
 
         # Navigate once to set pincode
-        _set_pincode(page, PWTimeout)
+        _set_pincode(page)
 
         for item in basket_items:
             _api_buf.clear()
@@ -69,7 +77,7 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
     return results
 
 
-def _set_pincode(page, PWTimeout):
+def _set_pincode(page):
     try:
         page.goto("https://www.zeptonow.com/", timeout=20_000, wait_until="domcontentloaded")
         page.wait_for_timeout(2_000)
