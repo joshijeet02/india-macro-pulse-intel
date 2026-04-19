@@ -13,26 +13,38 @@ def render_cpi_section():
         return
 
     latest = history[-1]
+    # Component decomposition requires 2012=100 base weights.
+    # India switched to 2024=100 from Jan 2026 — use latest month that still has components.
+    latest_dec = next(
+        (r for r in reversed(history) if r.get("core_yoy") is not None),
+        latest,
+    )
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Headline CPI", f"{latest['headline_yoy']}%", help="YoY %")
-    col2.metric("Core Inflation", f"{latest.get('core_yoy') or '—'}%",
+    col2.metric("Core Inflation", f"{latest_dec['core_yoy']}%",
                 help="Residual ex-food & fuel — key MPC signal")
-    col3.metric("Food Inflation", f"{latest.get('food_yoy') or '—'}%",
+    col3.metric("Food Inflation", f"{latest_dec['food_yoy']}%",
                 help="Food & Beverages (weight: 45.9%)")
-    col4.metric("Fuel Inflation", f"{latest.get('fuel_yoy') or '—'}%",
+    col4.metric("Fuel Inflation", f"{latest_dec['fuel_yoy']}%",
                 help="Fuel & Light (weight: 6.8%)")
 
-    st.caption(f"Reference: {latest['reference_month']} · Food 45.86% · Fuel 6.84% · Core 47.30%")
+    comp_note = (
+        f"Reference: {latest['reference_month']}"
+        if latest_dec is latest
+        else f"Headline: {latest['reference_month']} · Components: {latest_dec['reference_month']} "
+             f"(base 2024=100 from Jan 2026 — old weights no longer apply)"
+    )
+    st.caption(comp_note + " · Food 45.86% · Fuel 6.84% · Core 47.30%")
 
-    if all(latest.get(k) is not None for k in ["food_contrib", "fuel_contrib", "core_contrib"]):
+    if all(latest_dec.get(k) is not None for k in ["food_contrib", "fuel_contrib", "core_contrib"]):
         st.subheader("Contributions to Headline CPI (pp)")
         contrib_data = pd.DataFrame({
             "Component": ["Food", "Fuel", "Core"],
             "Contribution (pp)": [
-                latest["food_contrib"],
-                latest["fuel_contrib"],
-                latest["core_contrib"],
+                latest_dec["food_contrib"],
+                latest_dec["fuel_contrib"],
+                latest_dec["core_contrib"],
             ],
         })
         st.bar_chart(contrib_data.set_index("Component"))
