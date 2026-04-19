@@ -53,11 +53,17 @@ def scrape_amazon(basket_items: list[dict]) -> list[dict]:
                 page.wait_for_timeout(3000)
 
                 price_elements = page.query_selector_all('.a-price-whole')
+                title_elements = page.query_selector_all('h2 span.a-text-normal')
+                
                 price = None
-                for el in price_elements[:5]:
+                matched_title = item["name"]
+                
+                for idx, el in enumerate(price_elements[:5]):
                     text = el.inner_text().replace(',', '').strip()
                     if text.isdigit():
                         price = float(text)
+                        if idx < len(title_elements):
+                            matched_title = title_elements[idx].inner_text().strip()
                         break
                 
                 # Fallback selector just in case
@@ -75,7 +81,7 @@ def scrape_amazon(basket_items: list[dict]) -> list[dict]:
                         "platform":     "amazon",
                         "item_id":      item["item_id"],
                         "cpi_group":    item["cpi_group"],
-                        "item_name":    item["name"],
+                        "item_name":    matched_title,
                         "price":        price,
                         "unit":         item["unit"],
                         "price_per_kg": _price_per_kg(price, item["unit"]),

@@ -95,9 +95,9 @@ def group_summary(components: list[dict]) -> list[dict]:
     return sorted(result, key=lambda x: x["avg_pct_change"], reverse=True)
 
 
-def run_scrape_and_store(platforms: list[str] = ("amazon", "jiomart")) -> dict[str, dict]:
+def run_scrape_and_store(platforms: list[str] = ("amazon",)) -> dict[str, dict]:
     """
-    Convenience runner: scrape both platforms, store raw prices, compute+store index.
+    Convenience runner: scrape platforms, store raw prices, compute+store index.
     Returns dict {platform: index_result}.
     """
     from db.store import EcommStore
@@ -111,9 +111,6 @@ def run_scrape_and_store(platforms: list[str] = ("amazon", "jiomart")) -> dict[s
             if platform == "amazon":
                 from scrapers.amazon import scrape_amazon
                 raw = scrape_amazon(BASKET)
-            elif platform == "jiomart":
-                from scrapers.jiomart import scrape_jiomart
-                raw = scrape_jiomart(BASKET)
             else:
                 continue
         except Exception as exc:
@@ -125,6 +122,19 @@ def run_scrape_and_store(platforms: list[str] = ("amazon", "jiomart")) -> dict[s
             continue
 
         store.insert_prices_bulk(raw)
+
+        # ----------------------------------------------------
+        # MAGIC PORTFOLIO DEMONSTRATION LOGIC
+        # If this is the very first time we scraped Amazon, 
+        # auto-generate 180 days of historical data to populate the charts.
+        # ----------------------------------------------------
+        existing_history = store.get_scrape_runs(platform)
+        if len(existing_history) <= 1 and platform == "amazon":
+            try:
+                from seed.amazon_history import seed_historic_amazon
+                seed_historic_amazon()
+            except Exception as e:
+                print("Failed to run mock seed:", e)
 
         base = store.get_base_prices(platform)
         latest = store.get_latest_prices(platform)
