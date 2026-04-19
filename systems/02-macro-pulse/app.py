@@ -1,8 +1,25 @@
 import streamlit as st
-# Trigger redeploy: 2026-04-19 19:40
+# Trigger redeploy: 2026-04-19 19:44
 import os
 import sys
 import subprocess
+
+def _install_playwright():
+    try:
+        import playwright
+    except ImportError:
+        return
+    
+    # Check if chromium is already installed in the standard playwright path
+    # On Streamlit Cloud/Linux it's usually in ~/.cache/ms-playwright/
+    if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
+        try:
+            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        except Exception as e:
+            print(f"Playwright install failed: {e}")
+
+_install_playwright()
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 
