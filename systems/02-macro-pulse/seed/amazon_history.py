@@ -22,53 +22,56 @@ def seed_historic_amazon():
         return
 
     # Base price setup (Laspeyres base)
-    # To make the chart look like inflation is happening, we will say the prices 
+    # To make the chart look like inflation is happening, we will say the prices
     # 180 days ago were actually 4-6% cheaper.
     base_prices = {}
-    base_scrape_at = (datetime.now(timezone.utc) - timedelta(days=180)).strftime("%Y-%m-%d %H:%M:%S")
-    
+    base_dt   = datetime.now(timezone.utc) - timedelta(days=180)
+    base_scrape_at = base_dt.strftime("%Y-%m-%d %H:%M:%S")
+
     historical_records = []
-    
+
     print(f"Generating 180 days of historical data anchored to {len(current_prices)} current prices...")
-    
+
     # Generate the base month (T-180 days)
     for p in current_prices:
         # base was ~5% cheaper on average
         inflation_factor = random.uniform(0.92, 0.96)
         base_price_val = round(p["price"] * inflation_factor, 2)
         base_prices[p["item_id"]] = p.get("price_per_kg") * inflation_factor if p.get("price_per_kg") else base_price_val
-        
+
         row = p.copy()
         row["price"] = base_price_val
         if row.get("price_per_kg"):
             row["price_per_kg"] = round(row["price_per_kg"] * inflation_factor, 2)
         row["scraped_at"] = base_scrape_at
-        del row["id"]  # Remove primary key if present
+        if "id" in row: del row["id"]
         historical_records.append(row)
-        
+
     store.insert_prices_bulk(historical_records)
-    
+
     # Calculate Base Index (Should be exactly 100.0)
     base_snapshot = store.get_prices_at("amazon", base_scrape_at)
     idx_res = compute_index(base_snapshot, base_prices)
     if idx_res["index_value"]:
         store.insert_index({
-            "platform": "amazon",
+            "platform":    "amazon",
             "computed_at": base_scrape_at,
             "index_value": idx_res["index_value"],
             "coverage_pct": idx_res["coverage_pct"],
             "items_count": idx_res["items_count"]
         })
 
-    # 2. Iterate forward week by week to simulate timeline
+    # 2. Iterate forward week by week to simulate timeline (all UTC-aware)
     current_dt = datetime.now(timezone.utc)
-    step_dt = datetime.fromisoformat(base_scrape_at.replace(" ", "T")) + timedelta(days=7)
-    
+    step_dt    = base_dt + timedelta(days=7)   # ← same type as current_dt: timezone-aware
+
     while step_dt < current_dt:
         step_str = step_dt.strftime("%Y-%m-%d %H:%M:%S")
-        
+
         # Calculate how far along we are from base (0) to now (1)
-        progress = (step_dt - datetime.fromisoformat(base_scrape_at.replace(" ", "T"))).total_seconds() / (current_dt - datetime.fromisoformat(base_scrape_at.replace(" ", "T"))).total_seconds()
+        total_seconds  = (current_dt - base_dt).total_seconds()
+        elapsed        = (step_dt   - base_dt).total_seconds()
+        progress       = elapsed / total_seconds
         
         step_records = []
         for p in current_prices:

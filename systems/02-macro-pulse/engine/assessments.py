@@ -160,41 +160,55 @@ def assess_cpi(history: list[dict]) -> dict:
 def _cpi_alpha_signal() -> tuple[str, str]:
     from db.store import EcommStore
     store = EcommStore()
-    bl_idx = store.get_index_history("blinkit", limit=1)
-    zt_idx = store.get_index_history("zepto", limit=1)
-    
-    if not bl_idx and not zt_idx:
+    am_history = store.get_index_history("amazon", limit=4)
+
+    if not am_history:
         return (
-            "Proprietary Early Pulse Index: No recent e-commerce data available to compute high-frequency alpha.",
+            "🔬 Proprietary Early Pulse (Amazon Basket): No e-commerce data yet. "
+            "Click 'Run Price Scrape' in the Proprietary Pulse tab to activate this leading signal.",
             "info"
         )
-    
-    # Use average of available platforms
-    current_values = []
-    if bl_idx: current_values.append(bl_idx[0]["index_value"])
-    if zt_idx: current_values.append(zt_idx[0]["index_value"])
-    avg_idx = sum(current_values) / len(current_values)
-    
-    # Logic: If index is rising sharply (>105 from base 100), flag it.
-    if avg_idx > 105:
-        return (
-            f"Proprietary Alpha Detected: Our custom E-commerce Pulse Index is at {avg_idx:.1f} "
-            f"(Base=100). This indicates significant urban food price pressure that may not "
-            f"be fully reflected in the official monthly CPI yet. Hawkish lead indicator.",
-            "warning"
+
+    latest = am_history[-1]
+    avg_idx = latest["index_value"]
+    coverage = latest["coverage_pct"]
+
+    # Compute trend: compare latest to earliest available in this window
+    trend_pts = avg_idx - am_history[0]["index_value"] if len(am_history) > 1 else 0
+
+    if avg_idx > 108:
+        signal = (
+            f"🔴 Proprietary Pulse ALERT — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
+            f"A {avg_idx - 100:.1f}pt surge above base signals acute food cost escalation — "
+            f"this is a leading indicator of a potential CPI Food upside surprise in the next MOSPI release."
         )
-    elif avg_idx < 95:
-        return (
-            f"Proprietary Alpha Detected: E-commerce Pulse Index shows softening prices ({avg_idx:.1f}). "
-            f"Urban disinflation is leading the official headline. Bullish for bond sentiment.",
-            "success"
+        tone = "error"
+    elif avg_idx > 103:
+        signal = (
+            f"🟡 Proprietary Pulse ELEVATED — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
+            f"Prices are running {avg_idx - 100:.1f}pts above base. Combined with a "
+            f"{'rising' if trend_pts > 0 else 'flat'} trend, this suggests mild food cost pressure "
+            f"building ahead of the official MOSPI data window."
         )
+        tone = "warning"
+    elif avg_idx < 98:
+        signal = (
+            f"🟢 Proprietary Pulse SOFT — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
+            f"Urban food prices are running below base, indicating demand softness or supply easing. "
+            f"This is a leading disinflationary signal and supports a favourable CPI food print."
+        )
+        tone = "success"
     else:
-        return (
-            f"Proprietary Early Pulse Index is stable at {avg_idx:.1f}. High-frequency "
-            f"urban food prices are currently aligned with the broader disinflation trend.",
-            "info"
+        signal = (
+            f"✅ Proprietary Pulse STABLE — Amazon Basket Index at {avg_idx:.1f} (base=100, {coverage:.0f}% coverage). "
+            f"Urban food prices are holding steady with no significant divergence from base. "
+            f"No upstream price pressure detected 15-30 days ahead of the next MOSPI release."
         )
+        tone = "success"
+
+    return signal, tone
+
+
 
 
 def _cpi_trajectory(sorted_history: list[dict]) -> tuple[str, str]:
