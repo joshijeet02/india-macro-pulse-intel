@@ -36,8 +36,22 @@ RELEASE_SCHEDULE: list[ScheduledRelease] = [
     ScheduledRelease("IIP", "Jun-2025", date(2025, 8, 29)),
     ScheduledRelease("IIP", "Jul-2025", date(2025, 9, 30)),
     ScheduledRelease("IIP", "Aug-2025", date(2025, 10, 31)),
-    ScheduledRelease("IIP", "Sep-2025", date(2025, 11, 28)),
-    ScheduledRelease("IIP", "Oct-2025", date(2025, 12, 31)),
+    ScheduledRelease("IIP", "Sep-2025", date(2025, 11, 28), is_released=True),
+    ScheduledRelease("IIP", "Oct-2025", date(2025, 12, 31), is_released=True),
+    # CPI releases 2026
+    ScheduledRelease("CPI", "Jan-2026", date(2026, 2, 12), is_released=True),
+    ScheduledRelease("CPI", "Feb-2026", date(2026, 3, 12), is_released=True),
+    ScheduledRelease("CPI", "Mar-2026", date(2026, 4, 14), is_released=True),
+    ScheduledRelease("CPI", "Apr-2026", date(2026, 5, 13)),
+    ScheduledRelease("CPI", "May-2026", date(2026, 6, 12)),
+    ScheduledRelease("CPI", "Jun-2026", date(2026, 7, 13)),
+    # IIP releases 2026 (2-month lag)
+    ScheduledRelease("IIP", "Nov-2025", date(2026, 1, 30), is_released=True),
+    ScheduledRelease("IIP", "Dec-2025", date(2026, 2, 27), is_released=True),
+    ScheduledRelease("IIP", "Jan-2026", date(2026, 3, 31), is_released=True),
+    ScheduledRelease("IIP", "Feb-2026", date(2026, 4, 30)),
+    ScheduledRelease("IIP", "Mar-2026", date(2026, 5, 29)),
+    ScheduledRelease("IIP", "Apr-2026", date(2026, 6, 30)),
 ]
 
 

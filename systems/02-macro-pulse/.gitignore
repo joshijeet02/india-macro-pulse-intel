@@ -1,0 +1,6 @@
+data/macro_pulse.db
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
