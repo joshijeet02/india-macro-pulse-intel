@@ -1,7 +1,8 @@
 """
 Zepto price scraper (Delhi, pincode 110001).
-Uses Playwright — mirrors the Blinkit scraper structure for easy comparison.
+Mirrors the Blinkit scraper structure. Raises RuntimeError if browser can't launch.
 """
+import os
 import re
 import time
 import logging
@@ -22,17 +23,24 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
     """
     Scrape prices for basket_items from Zepto.
     Returns list of price records ready for EcommStore.insert_prices_bulk.
+    Raises RuntimeError with a message if browser can't launch.
     """
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
     except ImportError:
-        logger.error("playwright not installed. Run: pip install playwright && playwright install chromium")
-        return []
+        raise RuntimeError("playwright package not installed")
 
-    results = []
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/tmp/pw-browsers")
+
     scraped_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    results = []
 
-    with sync_playwright() as pw:
+    try:
+        pw = sync_playwright().start()
+    except Exception as exc:
+        raise RuntimeError(f"Playwright failed to start: {exc}") from exc
+
+    try:
         browser = pw.chromium.launch(
             headless=True,
             args=[
@@ -42,6 +50,11 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
                 "--disable-gpu",
             ],
         )
+    except Exception as exc:
+        pw.stop()
+        raise RuntimeError(f"Chromium launch failed: {exc}") from exc
+
+    try:
         ctx = browser.new_context(
             user_agent=_UA,
             locale="en-IN",
@@ -60,8 +73,6 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
                     pass
 
         page.on("response", _on_response)
-
-        # Navigate once to set pincode
         _set_pincode(page)
 
         for item in basket_items:
@@ -71,7 +82,15 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
                 results.append(record)
             time.sleep(1.2)
 
-        browser.close()
+    finally:
+        try:
+            browser.close()
+        except Exception:
+            pass
+        try:
+            pw.stop()
+        except Exception:
+            pass
 
     logger.info(f"Zepto: scraped {len(results)}/{len(basket_items)} items")
     return results
@@ -81,18 +100,16 @@ def _set_pincode(page):
     try:
         page.goto("https://www.zeptonow.com/", timeout=20_000, wait_until="domcontentloaded")
         page.wait_for_timeout(2_000)
-        # Try to enter pincode if modal is present
         pincode_input = page.query_selector('input[placeholder*="pincode"], input[placeholder*="Pincode"]')
         if pincode_input:
             pincode_input.fill(PINCODE)
             page.wait_for_timeout(1_000)
-            # Click first suggestion
             suggestion = page.query_selector('[class*="suggestion"], [class*="Suggestion"]')
             if suggestion:
                 suggestion.click()
                 page.wait_for_timeout(1_500)
     except Exception:
-        pass  # location setting is best-effort
+        pass
 
 
 def _scrape_item(page, api_buf: list, item: dict, scraped_at: str, PWTimeout) -> Optional[dict]:
@@ -114,20 +131,17 @@ def _scrape_item(page, api_buf: list, item: dict, scraped_at: str, PWTimeout) ->
             return None
 
         unit_str = unit_str or item["unit"]
-        ppkg = _price_per_kg(price, unit_str)
-
         return {
-            "platform":    "zepto",
-            "item_id":     item["item_id"],
-            "cpi_group":   item["cpi_group"],
-            "item_name":   item_name or item["name"],
-            "price":       price,
-            "unit":        unit_str,
-            "price_per_kg": ppkg,
-            "scraped_at":  scraped_at,
-            "pincode":     PINCODE,
+            "platform":     "zepto",
+            "item_id":      item["item_id"],
+            "cpi_group":    item["cpi_group"],
+            "item_name":    item_name or item["name"],
+            "price":        price,
+            "unit":         unit_str,
+            "price_per_kg": _price_per_kg(price, unit_str),
+            "scraped_at":   scraped_at,
+            "pincode":      PINCODE,
         }
-
     except PWTimeout:
         logger.warning(f"Zepto: timeout for {item['name']}")
         return None
@@ -138,7 +152,6 @@ def _scrape_item(page, api_buf: list, item: dict, scraped_at: str, PWTimeout) ->
 
 def _extract_from_api(api_buf: list, item: dict) -> tuple[Optional[float], Optional[str], Optional[str]]:
     for payload in api_buf:
-        # Zepto API shapes vary — try common keys
         products = (
             payload.get("data", {}).get("products", [])
             or payload.get("products", [])
@@ -153,9 +166,13 @@ def _extract_from_api(api_buf: list, item: dict) -> tuple[Optional[float], Optio
                 or (p.get("pricingInfo", {}) or {}).get("price")
             )
             if price:
+                raw = float(price)
+                # Zepto sometimes returns paise (>1000 for items under ₹100)
+                if raw > 1000:
+                    raw /= 100
                 name = p.get("name") or p.get("productName") or item["name"]
                 unit = p.get("unitOfMeasure") or p.get("packSize") or p.get("weight") or ""
-                return float(price) / 100 if float(price) > 1000 else float(price), str(name), str(unit)
+                return raw, str(name), str(unit)
     return None, None, None
 
 
@@ -179,8 +196,7 @@ def _extract_from_dom(page, item: dict) -> tuple[Optional[float], Optional[str],
         )
         if not price_el:
             continue
-        raw = price_el.inner_text().strip()
-        price = _parse_price(raw)
+        price = _parse_price(price_el.inner_text().strip())
         if price and price > 0:
             name_el = (
                 card.query_selector('[class*="name"], [class*="Name"]')

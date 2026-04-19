@@ -2,6 +2,7 @@
 Blinkit price scraper (Delhi, pincode 110001).
 Uses Playwright to search for each basket item and extract the first result price.
 """
+import os
 import re
 import time
 import logging
@@ -11,10 +12,8 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 PINCODE = "110001"
-# Approx lat/lon for Connaught Place, Delhi
 _LAT = "28.6339"
 _LON = "77.2195"
-
 _UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -26,17 +25,24 @@ def scrape_blinkit(basket_items: list[dict]) -> list[dict]:
     """
     Scrape prices for basket_items from Blinkit.
     Returns list of price records ready for EcommStore.insert_prices_bulk.
+    Raises RuntimeError with a message if browser can't launch.
     """
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
     except ImportError:
-        logger.error("playwright not installed. Run: pip install playwright && playwright install chromium")
-        return []
+        raise RuntimeError("playwright package not installed")
 
-    results = []
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/tmp/pw-browsers")
+
     scraped_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    results = []
 
-    with sync_playwright() as pw:
+    try:
+        pw = sync_playwright().start()
+    except Exception as exc:
+        raise RuntimeError(f"Playwright failed to start: {exc}") from exc
+
+    try:
         browser = pw.chromium.launch(
             headless=True,
             args=[
@@ -46,20 +52,24 @@ def scrape_blinkit(basket_items: list[dict]) -> list[dict]:
                 "--disable-gpu",
             ],
         )
+    except Exception as exc:
+        pw.stop()
+        raise RuntimeError(f"Chromium launch failed: {exc}") from exc
+
+    try:
         ctx = browser.new_context(
             user_agent=_UA,
             locale="en-IN",
             viewport={"width": 1280, "height": 800},
         )
         ctx.add_cookies([
-            {"name": "gr_1_latitude",  "value": _LAT,    "domain": ".blinkit.com", "path": "/"},
-            {"name": "gr_1_longitude", "value": _LON,    "domain": ".blinkit.com", "path": "/"},
-            {"name": "lat",            "value": _LAT,    "domain": ".blinkit.com", "path": "/"},
-            {"name": "lon",            "value": _LON,    "domain": ".blinkit.com", "path": "/"},
+            {"name": "gr_1_latitude",  "value": _LAT, "domain": ".blinkit.com", "path": "/"},
+            {"name": "gr_1_longitude", "value": _LON, "domain": ".blinkit.com", "path": "/"},
+            {"name": "lat",            "value": _LAT, "domain": ".blinkit.com", "path": "/"},
+            {"name": "lon",            "value": _LON, "domain": ".blinkit.com", "path": "/"},
         ])
         page = ctx.new_page()
 
-        # Intercept JSON API responses (Blinkit fires REST calls on search)
         _api_buf: list[dict] = []
 
         def _on_response(response):
@@ -79,7 +89,15 @@ def scrape_blinkit(basket_items: list[dict]) -> list[dict]:
                 results.append(record)
             time.sleep(1.2)
 
-        browser.close()
+    finally:
+        try:
+            browser.close()
+        except Exception:
+            pass
+        try:
+            pw.stop()
+        except Exception:
+            pass
 
     logger.info(f"Blinkit: scraped {len(results)}/{len(basket_items)} items")
     return results
@@ -91,10 +109,7 @@ def _scrape_item(page, api_buf: list, item: dict, scraped_at: str, PWTimeout) ->
         page.goto(f"https://blinkit.com/s/?q={q}", timeout=20_000, wait_until="domcontentloaded")
         page.wait_for_timeout(3_000)
 
-        # ── Try API buffer first ──────────────────────────────────────────
         price, item_name, unit_str = _extract_from_api(api_buf, item)
-
-        # ── Fallback: DOM scraping ────────────────────────────────────────
         if price is None:
             price, item_name, unit_str = _extract_from_dom(page, item)
 
@@ -103,20 +118,17 @@ def _scrape_item(page, api_buf: list, item: dict, scraped_at: str, PWTimeout) ->
             return None
 
         unit_str = unit_str or item["unit"]
-        ppkg = _price_per_kg(price, unit_str)
-
         return {
-            "platform":    "blinkit",
-            "item_id":     item["item_id"],
-            "cpi_group":   item["cpi_group"],
-            "item_name":   item_name or item["name"],
-            "price":       price,
-            "unit":        unit_str,
-            "price_per_kg": ppkg,
-            "scraped_at":  scraped_at,
-            "pincode":     PINCODE,
+            "platform":     "blinkit",
+            "item_id":      item["item_id"],
+            "cpi_group":    item["cpi_group"],
+            "item_name":    item_name or item["name"],
+            "price":        price,
+            "unit":         unit_str,
+            "price_per_kg": _price_per_kg(price, unit_str),
+            "scraped_at":   scraped_at,
+            "pincode":      PINCODE,
         }
-
     except PWTimeout:
         logger.warning(f"Blinkit: timeout for {item['name']}")
         return None
@@ -162,7 +174,6 @@ def _extract_from_dom(page, item: dict) -> tuple[Optional[float], Optional[str],
             break
 
     for card in cards[:5]:
-        # Try to find price within or near the card
         price_el = (
             card.query_selector('[class*="Price"]')
             or card.query_selector('[class*="price"]')
@@ -170,8 +181,7 @@ def _extract_from_dom(page, item: dict) -> tuple[Optional[float], Optional[str],
         )
         if not price_el:
             continue
-        raw = price_el.inner_text().strip()
-        price = _parse_price(raw)
+        price = _parse_price(price_el.inner_text().strip())
         if price and price > 0:
             name_el = (
                 card.query_selector('[class*="Name"]')

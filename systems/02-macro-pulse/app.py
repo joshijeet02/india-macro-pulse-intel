@@ -1,38 +1,26 @@
 import streamlit as st
-# Trigger redeploy: 2026-04-19 19:44
 import os
 import sys
 import subprocess
 
-def _install_playwright():
-    try:
-        import playwright
-    except ImportError:
-        return
-    
-    # Check if chromium is already installed in the standard playwright path
-    # On Streamlit Cloud/Linux it's usually in ~/.cache/ms-playwright/
-    if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-        try:
-            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-        except Exception as e:
-            print(f"Playwright install failed: {e}")
-
-_install_playwright()
-
+# Must be set before any playwright import so the binary lands in /tmp (writable on Streamlit Cloud)
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/tmp/pw-browsers"
 sys.path.insert(0, os.path.dirname(__file__))
 
 
 @st.cache_resource(show_spinner=False)
-def _install_playwright_browser():
-    """Install Playwright's Chromium binary once per container lifecycle."""
-    subprocess.run(
+def _ensure_playwright_chromium() -> tuple[bool, str]:
+    """Install Playwright Chromium once per container lifecycle. Returns (ok, error_msg)."""
+    result = subprocess.run(
         [sys.executable, "-m", "playwright", "install", "chromium"],
         capture_output=True,
+        text=True,
+        env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": "/tmp/pw-browsers"},
     )
+    return result.returncode == 0, result.stderr.strip()
 
 
-_install_playwright_browser()
+_pw_ready, _pw_err = _ensure_playwright_chromium()
 
 from db.schema import init_db
 from db.store import CPIStore
@@ -47,51 +35,20 @@ st.set_page_config(
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
-    
-    html, body, [class*="css"]  {
-        font-family: 'Inter', sans-serif;
-    }
-    
+    html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
     .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    
-    h1 { 
-        font-weight: 800 !important; 
-        color: #1C1E21 !important;
-        letter-spacing: -0.5px !important;
-        margin-bottom: 0.5rem !important;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: transparent;
-    }
-
+    h1 { font-weight: 800 !important; color: #1C1E21 !important;
+         letter-spacing: -0.5px !important; margin-bottom: 0.5rem !important; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; background-color: transparent; }
     .stTabs [data-baseweb="tab"] {
-        height: 44px;
-        white-space: pre-wrap;
-        background-color: #F0F2F6;
-        border-radius: 8px 8px 0px 0px;
-        padding: 10px 20px;
-        color: #555;
-        font-weight: 600;
-        border: none;
+        height: 44px; background-color: #F0F2F6; border-radius: 8px 8px 0px 0px;
+        padding: 10px 20px; color: #555; font-weight: 600; border: none;
     }
-
-    .stTabs [aria-selected="true"] {
-        background-color: #2E5BFF !important;
-        color: white !important;
-    }
-    
+    .stTabs [aria-selected="true"] { background-color: #2E5BFF !important; color: white !important; }
     div[data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        font-weight: 700 !important;
-        color: #2E5BFF !important;
+        font-size: 1.8rem !important; font-weight: 700 !important; color: #2E5BFF !important;
     }
-    
-    .stDivider {
-        margin-top: 2rem !important;
-        margin-bottom: 2rem !important;
-    }
+    .stDivider { margin-top: 2rem !important; margin-bottom: 2rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -130,4 +87,4 @@ with tab_brief:
     render_brief_section()
 
 with tab_ecomm:
-    render_ecomm_section()
+    render_ecomm_section(_pw_ready, _pw_err)

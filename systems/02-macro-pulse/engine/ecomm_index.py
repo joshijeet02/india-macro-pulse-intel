@@ -4,9 +4,7 @@ Index = 100 at first scrape date. Each subsequent scrape produces an index readi
 that directly parallels CPI food movement.
 """
 from datetime import datetime, timezone
-from typing import Optional
-
-from engine.ecomm_basket import BASKET, BASKET_BY_ID
+from engine.ecomm_basket import BASKET
 
 
 def compute_index(
@@ -109,17 +107,21 @@ def run_scrape_and_store(platforms: list[str] = ("blinkit", "zepto")) -> dict[st
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     for platform in platforms:
-        if platform == "blinkit":
-            from scrapers.blinkit import scrape_blinkit
-            raw = scrape_blinkit(BASKET)
-        elif platform == "zepto":
-            from scrapers.zepto import scrape_zepto
-            raw = scrape_zepto(BASKET)
-        else:
+        try:
+            if platform == "blinkit":
+                from scrapers.blinkit import scrape_blinkit
+                raw = scrape_blinkit(BASKET)
+            elif platform == "zepto":
+                from scrapers.zepto import scrape_zepto
+                raw = scrape_zepto(BASKET)
+            else:
+                continue
+        except Exception as exc:
+            results[platform] = {"error": str(exc), "items_scraped": 0}
             continue
 
         if not raw:
-            results[platform] = {"error": "No data returned from scraper"}
+            results[platform] = {"error": "Scraper returned 0 items — site may be blocking headless browser", "items_scraped": 0}
             continue
 
         store.insert_prices_bulk(raw)
