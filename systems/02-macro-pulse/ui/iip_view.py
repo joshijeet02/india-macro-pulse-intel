@@ -3,6 +3,14 @@ import pandas as pd
 from db.store import IIPStore
 from engine.iip_decomposer import assess_iip_composition
 from engine.surprise_calc import compute_surprise
+from engine.assessments import assess_iip
+
+_TONE_FN = {
+    "success": st.success,
+    "info":    st.info,
+    "warning": st.warning,
+    "error":   st.error,
+}
 
 
 def render_iip_section():
@@ -23,12 +31,12 @@ def render_iip_section():
                 help="Urban discretionary demand")
 
     use_keys = [
-        ("capital_goods_yoy", "Capital Goods"),
-        ("consumer_durables_yoy", "Consumer Durables"),
+        ("capital_goods_yoy",        "Capital Goods"),
+        ("consumer_durables_yoy",    "Consumer Durables"),
         ("consumer_nondurables_yoy", "Consumer Non-Durables"),
-        ("infra_construction_yoy", "Infra/Construction"),
-        ("primary_goods_yoy", "Primary Goods"),
-        ("intermediate_goods_yoy", "Intermediate Goods"),
+        ("infra_construction_yoy",   "Infra/Construction"),
+        ("primary_goods_yoy",        "Primary Goods"),
+        ("intermediate_goods_yoy",   "Intermediate Goods"),
     ]
     available = {label: latest[key] for key, label in use_keys if latest.get(key) is not None}
 
@@ -37,11 +45,11 @@ def render_iip_section():
         bar_df = pd.DataFrame(available.items(), columns=["Component", "YoY %"])
         st.bar_chart(bar_df.set_index("Component"))
 
-        cap = latest.get("capital_goods_yoy") or 0
-        cd = latest.get("consumer_durables_yoy") or 0
-        cnd = latest.get("consumer_nondurables_yoy") or 0
+        cap   = latest.get("capital_goods_yoy") or 0
+        cd    = latest.get("consumer_durables_yoy") or 0
+        cnd   = latest.get("consumer_nondurables_yoy") or 0
         infra = latest.get("infra_construction_yoy") or 0
-        prim = latest.get("primary_goods_yoy") or 0
+        prim  = latest.get("primary_goods_yoy") or 0
         inter = latest.get("intermediate_goods_yoy") or 0
 
         signal = assess_iip_composition(
@@ -56,6 +64,19 @@ def render_iip_section():
             f"**Consumption Demand:** {invest_color[signal.consumption_demand]} {signal.consumption_demand.upper()}\n\n"
             f"{signal.mpc_growth_read}"
         )
+
+    # ── Economic Assessments ────────────────────────────────────────────────
+    assessments = assess_iip(history)
+    if assessments:
+        st.subheader("What This Means")
+        tab_labels = ["Headline", "Investment", "Consumption", "Infrastructure", "Trajectory", "Market Implication"]
+        fields     = ["headline", "investment", "consumption", "infrastructure", "trajectory", "implication"]
+        tabs = st.tabs(tab_labels)
+        for tab, field in zip(tabs, fields):
+            with tab:
+                a = assessments.get(field, {})
+                if a:
+                    _TONE_FN.get(a["tone"], st.info)(a["text"])
 
     st.subheader("12-Month IIP Trend")
     df = pd.DataFrame(history).set_index("reference_month")

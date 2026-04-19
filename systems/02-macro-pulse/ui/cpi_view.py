@@ -2,6 +2,14 @@ import streamlit as st
 import pandas as pd
 from db.store import CPIStore
 from engine.surprise_calc import compute_surprise
+from engine.assessments import assess_cpi
+
+_TONE_FN = {
+    "success": st.success,
+    "info":    st.info,
+    "warning": st.warning,
+    "error":   st.error,
+}
 
 
 def render_cpi_section():
@@ -37,6 +45,20 @@ def render_cpi_section():
     )
     st.caption(comp_note + " · Food 45.86% · Fuel 6.84% · Core 47.30%")
 
+    # ── Economic Assessments ────────────────────────────────────────────────
+    assessments = assess_cpi(history)
+    if assessments:
+        st.subheader("What This Means")
+        tabs = st.tabs(["Headline", "Core", "Food", "Trajectory", "Market Implication"])
+
+        fields = ["headline", "core", "food", "trajectory", "implication"]
+        for tab, field in zip(tabs, fields):
+            with tab:
+                a = assessments.get(field, {})
+                if a:
+                    _TONE_FN.get(a["tone"], st.info)(a["text"])
+
+    # ── Contribution bar chart ──────────────────────────────────────────────
     if all(latest_dec.get(k) is not None for k in ["food_contrib", "fuel_contrib", "core_contrib"]):
         st.subheader("Contributions to Headline CPI (pp)")
         contrib_data = pd.DataFrame({
