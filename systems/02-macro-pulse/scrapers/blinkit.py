@@ -50,6 +50,7 @@ def scrape_blinkit(basket_items: list[dict]) -> list[dict]:
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
             ],
         )
     except Exception as exc:
@@ -70,6 +71,10 @@ def scrape_blinkit(basket_items: list[dict]) -> list[dict]:
         ])
         page = ctx.new_page()
 
+        # Anti-bot bypass: hide webdriver flag
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+        # Intercept JSON API responses (Blinkit fires REST calls on search)
         _api_buf: list[dict] = []
 
         def _on_response(response):

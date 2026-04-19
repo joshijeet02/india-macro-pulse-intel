@@ -48,6 +48,7 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
             ],
         )
     except Exception as exc:
@@ -61,6 +62,9 @@ def scrape_zepto(basket_items: list[dict]) -> list[dict]:
             viewport={"width": 1280, "height": 800},
         )
         page = ctx.new_page()
+
+        # Anti-bot bypass: hide webdriver flag
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
         _api_buf: list[dict] = []
 
