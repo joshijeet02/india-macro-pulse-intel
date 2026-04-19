@@ -1,0 +1,32 @@
+# India Economic Intelligence — Python Dependencies
+# Core: Python 3.10+
+
+# HTTP & scraping
+requests>=2.31.0
+httpx>=0.27.0
+aiohttp>=3.9.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+playwright>=1.44.0        # Browser automation for JS-rendered govt portals
+
+# Data processing
+pandas>=2.1.0
+numpy>=1.26.0
+
+# PDF handling (for RBI MPC minutes, policy documents)
+pdfplumber>=0.10.0
+pypdf2>=3.0.0
+
+# LLM / AI
+anthropic>=0.26.0         # Claude API for economic synthesis
+tiktoken>=0.7.0           # Token counting
+
+# API framework
+fastapi>=0.111.0
+uvicorn>=0.29.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Optional: vector DB for RAG (install separately if chromadb conflicts)
+# chromadb>=0.5.0
