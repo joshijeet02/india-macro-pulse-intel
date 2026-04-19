@@ -56,6 +56,28 @@ CREATE TABLE IF NOT EXISTS spf_consensus (
     q1_forecast      REAL,
     q3_forecast      REAL
 );
+
+CREATE TABLE IF NOT EXISTS ecomm_prices (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform     TEXT NOT NULL,
+    item_id      TEXT NOT NULL,
+    cpi_group    TEXT NOT NULL,
+    item_name    TEXT NOT NULL,
+    price        REAL NOT NULL,
+    unit         TEXT NOT NULL,
+    price_per_kg REAL,
+    scraped_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    pincode      TEXT NOT NULL DEFAULT '110001'
+);
+
+CREATE TABLE IF NOT EXISTS ecomm_index (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform     TEXT NOT NULL,
+    computed_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    index_value  REAL NOT NULL,
+    coverage_pct REAL NOT NULL,
+    items_count  INTEGER NOT NULL
+);
 """
 
 

@@ -30,15 +30,16 @@ from ui.cpi_view import render_cpi_section
 from ui.iip_view import render_iip_section
 from ui.surprise_view import render_surprise_history
 from ui.brief_view import render_brief_section
+from ui.ecomm_view import render_ecomm_section
 
 st.title("India Macro Pulse")
-st.caption("Real-time data release intelligence · CPI · IIP · Surprise Tracker · Flash Briefs")
+st.caption("Real-time data release intelligence · CPI · IIP · Surprise Tracker · Flash Briefs · Price Tracker")
 
 render_release_calendar()
 st.divider()
 
-tab_cpi, tab_iip, tab_surprise, tab_brief = st.tabs([
-    "CPI Decomposition", "IIP Decomposition", "Surprise Tracker", "Flash Brief"
+tab_cpi, tab_iip, tab_surprise, tab_brief, tab_ecomm = st.tabs([
+    "CPI Decomposition", "IIP Decomposition", "Surprise Tracker", "Flash Brief", "Price Tracker"
 ])
 
 with tab_cpi:
@@ -52,3 +53,6 @@ with tab_surprise:
 
 with tab_brief:
     render_brief_section()
+
+with tab_ecomm:
+    render_ecomm_section()
