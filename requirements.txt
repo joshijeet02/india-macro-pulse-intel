@@ -1,5 +1,6 @@
 # India Economic Intelligence — Python Dependencies
 # Core: Python 3.10+
+streamlit>=1.35.0
 
 # HTTP & scraping
 requests>=2.31.0
