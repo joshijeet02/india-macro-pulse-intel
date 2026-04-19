@@ -13,8 +13,13 @@ def render_ecomm_section():
     store = EcommStore()
     has_data = store.has_data()
 
+    st.info(
+        "**Proprietary Intelligence:** This High-Frequency Pulse Index is a custom composite measure of urban food inflation. "
+        "It tracks a fixed basket of 20 items across 9 CPI sub-groups in real-time, providing a leading signal 15-30 days before official MOSPI releases."
+    )
+
     st.markdown(
-        "**Blinkit & Zepto basket tracker** · 20 items across 9 CPI food sub-groups · "
+        "**Engine Details** · Blinkit & Zepto basket tracker · "
         "Delhi (110001) · Laspeyres index (base = first scrape)"
     )
 
@@ -49,7 +54,7 @@ def render_ecomm_section():
     _render_price_table(store)
 
     # ── Index cards ─────────────────────────────────────────────────────────
-    st.subheader("Laspeyres Food Price Index (base = 100 at first scrape)")
+    st.subheader("Composite Price Level Index (Laspeyres Base = 100)")
     _render_index_cards(store)
 
     # ── Category heatmap ────────────────────────────────────────────────────

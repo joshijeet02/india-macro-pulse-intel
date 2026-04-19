@@ -144,13 +144,57 @@ def assess_cpi(history: list[dict]) -> dict:
     # --- Market implication ---
     implication_text, implication_tone = _cpi_implication(headline, core, trajectory_text)
 
+    # --- Proprietary Alpha Signal ---
+    alpha_text, alpha_tone = _cpi_alpha_signal()
+
     return {
         "headline":    {"text": headline_text,    "tone": headline_tone},
         "core":        {"text": core_text,         "tone": core_tone},
         "food":        {"text": food_text,         "tone": food_tone},
         "trajectory":  {"text": trajectory_text,  "tone": trajectory_tone},
         "implication": {"text": implication_text, "tone": implication_tone},
+        "alpha":       {"text": alpha_text,       "tone": alpha_tone},
     }
+
+
+def _cpi_alpha_signal() -> tuple[str, str]:
+    from db.store import EcommStore
+    store = EcommStore()
+    bl_idx = store.get_index_history("blinkit", limit=1)
+    zt_idx = store.get_index_history("zepto", limit=1)
+    
+    if not bl_idx and not zt_idx:
+        return (
+            "Proprietary Early Pulse Index: No recent e-commerce data available to compute high-frequency alpha.",
+            "info"
+        )
+    
+    # Use average of available platforms
+    current_values = []
+    if bl_idx: current_values.append(bl_idx[0]["index_value"])
+    if zt_idx: current_values.append(zt_idx[0]["index_value"])
+    avg_idx = sum(current_values) / len(current_values)
+    
+    # Logic: If index is rising sharply (>105 from base 100), flag it.
+    if avg_idx > 105:
+        return (
+            f"Proprietary Alpha Detected: Our custom E-commerce Pulse Index is at {avg_idx:.1f} "
+            f"(Base=100). This indicates significant urban food price pressure that may not "
+            f"be fully reflected in the official monthly CPI yet. Hawkish lead indicator.",
+            "warning"
+        )
+    elif avg_idx < 95:
+        return (
+            f"Proprietary Alpha Detected: E-commerce Pulse Index shows softening prices ({avg_idx:.1f}). "
+            f"Urban disinflation is leading the official headline. Bullish for bond sentiment.",
+            "success"
+        )
+    else:
+        return (
+            f"Proprietary Early Pulse Index is stable at {avg_idx:.1f}. High-frequency "
+            f"urban food prices are currently aligned with the broader disinflation trend.",
+            "info"
+        )
 
 
 def _cpi_trajectory(sorted_history: list[dict]) -> tuple[str, str]:

@@ -49,9 +49,9 @@ def render_cpi_section():
     assessments = assess_cpi(history)
     if assessments:
         st.subheader("What This Means")
-        tabs = st.tabs(["Headline", "Core", "Food", "Trajectory", "Market Implication"])
+        tabs = st.tabs(["Headline", "Core", "Food", "Trajectory", "Market Implication", "Proprietary Pulse"])
 
-        fields = ["headline", "core", "food", "trajectory", "implication"]
+        fields = ["headline", "core", "food", "trajectory", "implication", "alpha"]
         for tab, field in zip(tabs, fields):
             with tab:
                 a = assessments.get(field, {})

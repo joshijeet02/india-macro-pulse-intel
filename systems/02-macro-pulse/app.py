@@ -70,7 +70,7 @@ render_release_calendar()
 st.divider()
 
 tab_cpi, tab_iip, tab_surprise, tab_brief, tab_ecomm = st.tabs([
-    "CPI Decomposition", "IIP Decomposition", "Surprise Tracker", "Flash Brief", "Price Tracker"
+    "CPI Decomposition", "IIP Decomposition", "Surprise Tracker", "Flash Brief", "Proprietary Pulse"
 ])
 
 with tab_cpi:
