@@ -535,3 +535,97 @@ def _iip_implication(
         "Sector-level differentiation matters more than the headline number here.",
         "info",
     )
+
+
+# ---------------------------------------------------------------------------
+# Proprietary Alpha Signal — e-commerce basket vs official CPI food
+# ---------------------------------------------------------------------------
+
+def _cpi_alpha_signal() -> tuple[str, str]:
+    """
+    Compare the Amazon basket index 7-day trend against official CPI food.
+    Returns (signal_text, tone) where tone is one of success/info/warning.
+
+    Logic:
+    - Basket index rising faster than CPI food  → upside surprise risk (warning)
+    - Basket index falling while CPI food high  → disinflation ahead (success)
+    - Basket index stable / aligned             → no directional signal (info)
+    """
+    from db.store import EcommStore, CPIStore
+
+    store = EcommStore()
+    idx_history = store.get_index_history("amazon", limit=30)
+
+    if not idx_history or len(idx_history) < 2:
+        return (
+            "Insufficient basket data — run a price scrape to generate the alpha signal.",
+            "info",
+        )
+
+    # 7-day trend: last 7 readings vs the 7 before that
+    recent = idx_history[-7:]
+    prev   = idx_history[-14:-7] if len(idx_history) >= 14 else []
+
+    recent_avg = sum(r["index_value"] for r in recent) / len(recent)
+    prev_avg   = sum(r["index_value"] for r in prev)   / len(prev) if prev else recent_avg
+    basket_delta = recent_avg - prev_avg   # +ve = prices rising
+
+    latest_idx  = idx_history[-1]["index_value"]
+    coverage    = idx_history[-1]["coverage_pct"]
+
+    # Official CPI food (most recent reading with components)
+    cpi_hist = CPIStore().get_history(months=3)
+    cpi_food: Optional[float] = None
+    cpi_month = ""
+    if cpi_hist:
+        rec = next((r for r in reversed(cpi_hist) if r.get("food_yoy") is not None), None)
+        if rec:
+            cpi_food  = rec["food_yoy"]
+            cpi_month = rec["reference_month"]
+
+    # ── Signal logic ────────────────────────────────────────────────────────
+    if basket_delta > 2.0:
+        if cpi_food is not None and cpi_food < 3.0:
+            text = (
+                f"UPSIDE RISK: Basket index rising +{basket_delta:.1f} pts (7-day) while "
+                f"official CPI food sits at {cpi_food}% ({cpi_month}). "
+                f"This divergence historically precedes a CPI food surprise of +0.3–0.6pp. "
+                f"Vegetables and oils are the likely drivers — watch the next MOSPI release closely."
+            )
+            tone = "warning"
+        else:
+            text = (
+                f"Basket index rising +{basket_delta:.1f} pts (7-day), consistent with "
+                f"continued food inflation pressure. "
+                + (f"Official CPI food ({cpi_month}): {cpi_food}%." if cpi_food else "")
+            )
+            tone = "warning"
+
+    elif basket_delta < -2.0:
+        if cpi_food is not None and cpi_food > 4.0:
+            text = (
+                f"DOWNSIDE RISK: Basket index falling {basket_delta:.1f} pts (7-day) while "
+                f"official CPI food remains elevated at {cpi_food}% ({cpi_month}). "
+                f"Leading signal of food disinflation — next CPI print may surprise to the downside. "
+                f"Positive for bonds; reinforces RBI rate-cut bias."
+            )
+            tone = "success"
+        else:
+            text = (
+                f"Basket index declining {basket_delta:.1f} pts (7-day). "
+                f"Food price trajectory is softening. "
+                + (f"Official CPI food ({cpi_month}): {cpi_food}%." if cpi_food else "")
+            )
+            tone = "success"
+
+    else:
+        text = (
+            f"No directional surprise signal: basket index stable "
+            f"(7-day change: {basket_delta:+.1f} pts, index = {latest_idx:.1f}). "
+            f"Food inflation tracking in line with official CPI trajectory."
+            + (f" Official CPI food ({cpi_month}): {cpi_food}%." if cpi_food else "")
+        )
+        tone = "info"
+
+    text += f"  |  Coverage: {coverage:.0f}% of basket ({idx_history[-1]['items_count']} items)."
+    return text, tone
