@@ -1,12 +1,14 @@
 import streamlit as st
-from datetime import date
+from datetime import date, datetime
+import zoneinfo
 from engine.release_calendar import get_upcoming_releases, days_until
 
 
 def render_release_calendar():
     st.subheader("Data Release Calendar")
 
-    today = date.today()
+    ist_tz = zoneinfo.ZoneInfo("Asia/Kolkata")
+    today = datetime.now(ist_tz).date()
     upcoming = get_upcoming_releases(as_of=today, days_ahead=90)
 
     if not upcoming:
