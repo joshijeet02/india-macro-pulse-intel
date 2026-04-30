@@ -1,11 +1,24 @@
-"""Seed the DB with historical CPI and IIP data through current releases."""
+"""Seed the DB with historical CPI and IIP data through current releases.
+
+Two layers compose the seed:
+1. Hardcoded baseline below (CPI_HISTORY, IIP_HISTORY) — frozen historical record.
+2. JSON sidecar at data/release_updates.json — written by the autonomous
+   refresh job (scripts/refresh_releases.py) when MOSPI publishes a new release.
+   Entries here OVERRIDE the hardcoded baseline by reference_month, allowing
+   forward-only growth without ever editing this file by hand.
+"""
+import json
 import sys
 import os
+from pathlib import Path
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import init_db
 from db.store import CPIStore, IIPStore
 from engine.cpi_decomposer import decompose_cpi
+
+RELEASE_UPDATES_PATH = Path(__file__).parent.parent / "data" / "release_updates.json"
 
 # ---------------------------------------------------------------------------
 # CPI data (MOSPI press releases, base 2012=100 unless noted)
@@ -226,14 +239,64 @@ IIP_HISTORY = [
 ]
 
 
+def _load_release_updates() -> dict:
+    """Load the autonomously-updated release JSON if present; tolerate missing/invalid."""
+    if not RELEASE_UPDATES_PATH.exists():
+        return {"cpi": [], "iip": []}
+    try:
+        data = json.loads(RELEASE_UPDATES_PATH.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[seed] WARN: could not read {RELEASE_UPDATES_PATH}: {exc} — using baseline only")
+        return {"cpi": [], "iip": []}
+    return {"cpi": data.get("cpi", []) or [], "iip": data.get("iip", []) or []}
+
+
+def _merged_cpi_history() -> list[tuple]:
+    """Baseline tuples + JSON updates, deduped by reference_month (JSON wins)."""
+    baseline = {row[0]: row for row in CPI_HISTORY}
+    for entry in _load_release_updates()["cpi"]:
+        rm = entry.get("reference_month")
+        if not rm:
+            continue
+        baseline[rm] = (
+            rm,
+            entry.get("release_date"),
+            entry.get("headline_yoy"),
+            entry.get("food_yoy"),
+            entry.get("fuel_yoy"),
+            entry.get("consensus_forecast"),
+        )
+    return sorted(baseline.values(), key=lambda r: r[0])
+
+
+def _merged_iip_history() -> list[dict]:
+    baseline = {row["reference_month"]: row for row in IIP_HISTORY}
+    for entry in _load_release_updates()["iip"]:
+        rm = entry.get("reference_month")
+        if not rm:
+            continue
+        # Carry over any baseline values for keys missing in the update,
+        # so partial scrapes never erase richer hardcoded data.
+        merged = {**baseline.get(rm, {}), **entry}
+        merged["reference_month"] = rm
+        baseline[rm] = merged
+    return sorted(baseline.values(), key=lambda r: r["reference_month"])
+
+
 def seed():
     init_db()
     cpi_store = CPIStore()
     iip_store = IIPStore()
 
-    print("Seeding CPI data...")
-    for row in CPI_HISTORY:
+    cpi_records = _merged_cpi_history()
+    iip_records = _merged_iip_history()
+
+    print(f"Seeding CPI data ({len(cpi_records)} records)...")
+    for row in cpi_records:
         ref_month, rel_date, headline, food, fuel, consensus = row
+        if headline is None:
+            print(f"  SKIP CPI {ref_month}: missing headline_yoy")
+            continue
         if food is not None and fuel is not None:
             dec = decompose_cpi(headline=headline, food_yoy=food, fuel_yoy=fuel)
             core_yoy     = dec["core_yoy"]
@@ -258,8 +321,11 @@ def seed():
         core_str = f"core={core_yoy}%" if core_yoy is not None else "no components"
         print(f"  CPI {ref_month}: {headline}% ({core_str})")
 
-    print("\nSeeding IIP data...")
-    for record in IIP_HISTORY:
+    print(f"\nSeeding IIP data ({len(iip_records)} records)...")
+    for record in iip_records:
+        if record.get("headline_yoy") is None:
+            print(f"  SKIP IIP {record.get('reference_month')}: missing headline_yoy")
+            continue
         iip_store.upsert({
             "release_date":             record["release_date"],
             "reference_month":          record["reference_month"],

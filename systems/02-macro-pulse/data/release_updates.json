@@ -1,0 +1,5 @@
+{
+  "_comment": "Autonomous additions to the CPI/IIP series, written by scripts/refresh_releases.py. Merged on top of seed/historical_data.py at app boot. Newer reference_months override hardcoded entries. Hand-edits are fine but the schedule of runs will overwrite this file when MOSPI publishes a fresh release.",
+  "cpi": [],
+  "iip": []
+}

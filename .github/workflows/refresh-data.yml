@@ -1,0 +1,106 @@
+name: refresh-mospi-data
+
+# Runs on a schedule during MOSPI release windows and on demand.
+# CPI publishes ~12th of each month; IIP ~28th–31st. We run daily 18:30 IST
+# (13:00 UTC) on days 10-31 to catch both windows with a comfortable buffer.
+#
+# Outcomes per run:
+#   - new release detected → JSON updated + committed → Streamlit Cloud auto-redeploys
+#   - no change            → no commit
+#   - parser failure       → opens a GitHub issue for human attention
+
+on:
+  schedule:
+    - cron: "0 13 10-31 * *"
+  workflow_dispatch:
+    inputs:
+      use_fixture:
+        description: "Run with bundled fixtures instead of live scrape (smoke test)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: systems/02-macro-pulse
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: systems/02-macro-pulse/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Refresh MOSPI releases
+        id: refresh
+        # Capture the exit code without failing the step. 0=new, 1=nochange, 2=fail.
+        run: |
+          set +e
+          if [ "${{ github.event.inputs.use_fixture }}" = "true" ]; then
+            python scripts/refresh_releases.py --use-fixture
+          else
+            python scripts/refresh_releases.py
+          fi
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          case $rc in
+            0) echo "status=new"      >> "$GITHUB_OUTPUT" ;;
+            1) echo "status=nochange" >> "$GITHUB_OUTPUT" ;;
+            *) echo "status=fail"     >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "Refresh script exit code: $rc"
+        env:
+          PYTHONPATH: ${{ github.workspace }}/systems/02-macro-pulse
+
+      - name: Commit & push if updated
+        if: steps.refresh.outputs.status == 'new'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/release_updates.json
+          if git diff --cached --quiet; then
+            echo "Nothing to commit (refresh said new but produced no diff?)"
+            exit 0
+          fi
+          git commit -m "data: autonomous MOSPI release refresh ($(date -u +%Y-%m-%d))"
+          git push
+
+      - name: Open issue on parser failure
+        if: steps.refresh.outputs.status == 'fail'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const today = new Date().toISOString().slice(0,10);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[mospi-refresh] Parser failure on ${today}`,
+              body: [
+                'The autonomous refresh job exited with status 2 (parser failure).',
+                '',
+                `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '',
+                'Likely causes:',
+                '- MOSPI changed the PDF layout (check `scrapers/_pdf_extract.py`)',
+                '- Site is unreachable (transient — re-run workflow manually)',
+                '- Sanity check rejected the parse (component count too low)',
+                '',
+                'Once fixed, run the workflow manually with workflow_dispatch.',
+              ].join('\n'),
+              labels: ['data-pipeline', 'bug'],
+            });
