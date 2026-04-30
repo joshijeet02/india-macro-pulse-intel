@@ -3,6 +3,7 @@ import pandas as pd
 from db.store import CPIStore
 from engine.surprise_calc import compute_surprise
 from engine.assessments import assess_cpi
+from ui._mode import assessment_text
 
 _TONE_FN = {
     "success": st.success,
@@ -56,7 +57,7 @@ def render_cpi_section():
             with tab:
                 a = assessments.get(field, {})
                 if a:
-                    _TONE_FN.get(a["tone"], st.info)(a["text"])
+                    _TONE_FN.get(a["tone"], st.info)(assessment_text(a))
 
     # ── Contribution bar chart ──────────────────────────────────────────────
     if all(latest_dec.get(k) is not None for k in ["food_contrib", "fuel_contrib", "core_contrib"]):

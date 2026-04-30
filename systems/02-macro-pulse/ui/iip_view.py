@@ -4,6 +4,7 @@ from db.store import IIPStore
 from engine.iip_decomposer import assess_iip_composition
 from engine.surprise_calc import compute_surprise
 from engine.assessments import assess_iip
+from ui._mode import assessment_text
 
 _TONE_FN = {
     "success": st.success,
@@ -76,7 +77,7 @@ def render_iip_section():
             with tab:
                 a = assessments.get(field, {})
                 if a:
-                    _TONE_FN.get(a["tone"], st.info)(a["text"])
+                    _TONE_FN.get(a["tone"], st.info)(assessment_text(a))
 
     st.subheader("12-Month IIP Trend")
     df = pd.DataFrame(history).set_index("reference_month")
