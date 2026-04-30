@@ -1,12 +1,22 @@
 """
 E-commerce price tracker tab.
-Shows Blinkit & Zepto basket prices, Laspeyres index, and CPI food overlay.
+Shows Amazon basket prices, Laspeyres index, and CPI food overlay.
+
+Data lifecycle:
+- Real prices accumulate via the weekly GH Action (scripts/scrape_amazon.py),
+  persisted to data/amazon_prices.json, and hydrated into SQLite on app boot.
+- The 'Run Price Scrape' button still works for ad-hoc local testing.
+- The legacy 'Simulate 180-Day History' button is gated behind the
+  MACRO_PULSE_DEV env var since the cron now produces real history.
 """
+import os
 import streamlit as st
 import pandas as pd
 from db.store import EcommStore, CPIStore
 from engine.ecomm_basket import BASKET
 from engine.ecomm_index import compute_index, group_summary
+
+DEV_MODE = os.environ.get("MACRO_PULSE_DEV", "").lower() in ("1", "true", "yes")
 
 
 def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
@@ -36,13 +46,21 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     with col_btn:
         run_scrape = st.button("Run Price Scrape", type="primary")
     with col_btn2:
-        run_history = st.button("Simulate 180-Day History", help="Retro-calculates a 6-month index trend based on today's anchor prices for demonstration.")
+        # Demo-history button is hidden in production — the weekly cron now
+        # generates real history. Set MACRO_PULSE_DEV=1 locally to see it.
+        run_history = st.button(
+            "Simulate Demo History (dev only)",
+            help="Generates synthetic history for local UI testing.",
+        ) if DEV_MODE else False
     with col_status:
         am_last = store.last_scraped_at("amazon")
         if am_last:
             st.caption(f"Last scraped · Amazon: {am_last}")
         else:
-            st.caption("No scrape data yet. Click **Run Price Scrape** to collect prices.")
+            st.caption(
+                "No scrape data yet. Real history accumulates via the weekly "
+                "GitHub Action — or click **Run Price Scrape** for an instant local test."
+            )
 
     # ── Show results/errors from previous scrape (persisted across rerun) ────
     if "scrape_msg" in st.session_state:
@@ -118,11 +136,12 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
 def _render_alpha_signal():
     """Calls assessments engine and renders the alpha signal prominently at tab top."""
     from engine.assessments import _cpi_alpha_signal
+    from ui._mode import is_plain
     _TONE_FN = {"success": st.success, "info": st.info, "warning": st.warning, "error": st.error}
     try:
-        signal_text, tone = _cpi_alpha_signal()
+        text, plain, tone = _cpi_alpha_signal()
         st.subheader("📡 Proprietary Alpha Signal")
-        _TONE_FN.get(tone, st.info)(signal_text)
+        _TONE_FN.get(tone, st.info)(plain if is_plain() else text)
     except Exception as e:
         st.info(f"📡 Proprietary Alpha Signal unavailable: {e}")
 

@@ -121,7 +121,27 @@ def run_scrape_and_store(platforms: list[str] = ("amazon",)) -> dict[str, dict]:
             results[platform] = {"error": "Scraper returned 0 items — site may be blocking headless browser", "items_scraped": 0}
             continue
 
-        store.insert_prices_bulk(raw)
+        # Outlier rejection: reject any item whose price is >40% off the trailing
+        # 4-week median. Protects the index from product-match errors (sponsored
+        # tile, wrong size variant, etc.) without manual review.
+        from engine.outlier import reject_outliers
+        kept, rejected = reject_outliers(raw, store, platform=platform, threshold=0.40)
+        if rejected:
+            results.setdefault(platform, {})["rejected"] = [
+                {"item_id": r["item_id"], "price": r["price"], "reason": r.get("_reject_reason")}
+                for r in rejected
+            ]
+
+        store.insert_prices_bulk(kept)
+
+        # Persist to JSON so the data survives container restarts on Streamlit Cloud.
+        try:
+            from seed.amazon_persist import append_observations
+            append_observations(kept)
+        except Exception as exc:
+            # Persistence failure should not break the in-memory index for this session.
+            import logging
+            logging.getLogger(__name__).warning(f"persist failed: {exc}")
 
         base = store.get_base_prices(platform)
         latest = store.get_latest_prices(platform)

@@ -57,12 +57,41 @@ if CPIStore().count() == 0:
     from seed.historical_data import seed
     seed()
 
+# Hydrate Amazon basket from committed JSON if the ephemeral DB is empty.
+# This makes the basket index survive Streamlit Cloud container restarts.
+from seed.amazon_persist import hydrate_db_from_json
+hydrate_db_from_json()
+
+# Recompute the basket index history from hydrated price observations.
+# Without this, the ecomm_index table starts empty even though prices are loaded.
+from db.store import EcommStore
+from engine.ecomm_index import compute_index
+_ecomm = EcommStore()
+if _ecomm.has_data():
+    _runs = _ecomm.get_scrape_runs("amazon", limit=120)
+    _base = _ecomm.get_base_prices("amazon")
+    if _base and not _ecomm.get_index_history("amazon", limit=1):
+        for _ts in reversed(_runs):  # oldest first
+            _snapshot = _ecomm.get_prices_at("amazon", _ts)
+            _idx = compute_index(_snapshot, _base)
+            if _idx["index_value"] is not None:
+                _ecomm.insert_index({
+                    "platform":     "amazon",
+                    "computed_at":  _ts,
+                    "index_value":  _idx["index_value"],
+                    "coverage_pct": _idx["coverage_pct"],
+                    "items_count":  _idx["items_count"],
+                })
+
+from ui._mode import render_mode_toggle
 from ui.calendar_view import render_release_calendar
 from ui.cpi_view import render_cpi_section
 from ui.iip_view import render_iip_section
 from ui.surprise_view import render_surprise_history
 from ui.brief_view import render_brief_section
 from ui.ecomm_view import render_ecomm_section
+
+render_mode_toggle()
 
 st.title("India Macro Pulse")
 st.caption("Strategic release intelligence for India's economic indicators · Real-time proprietary e-commerce signals")

@@ -1,16 +1,35 @@
 """
 Amazon India price scraper.
+
+Strategy:
+1. Visit search page for the basket item's amazon_search query.
+2. Collect up to N candidate result tiles, each with (title, price, sponsored).
+3. Filter sponsored tiles out — they're paid placements, not natural prices.
+4. Filter by unit consistency: the title should mention a quantity that matches
+   the basket item's expected unit (e.g. "5kg" for a 5kg rice query). Loose
+   match — we accept "5 kg", "5kg pack", etc.
+5. Among 3+ remaining candidates, pick the MEDIAN price. Median is robust to
+   bait-priced outliers and premium-variant tiles.
+6. Compute price_per_kg using parsed unit when available.
+
+Returns observations as list of dicts. Caller is responsible for outlier
+rejection vs the historical trailing median (engine/outlier.py).
 """
+from __future__ import annotations
+
+import logging
 import os
 import re
+import statistics
 import time
-import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 PINCODE = "110001"
+MAX_RESULTS_PER_QUERY = 8
+
 
 def scrape_amazon(basket_items: list[dict]) -> list[dict]:
     try:
@@ -20,7 +39,7 @@ def scrape_amazon(basket_items: list[dict]) -> list[dict]:
 
     os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/tmp/pw-browsers")
     scraped_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    results = []
+    results: list[dict] = []
 
     try:
         pw = sync_playwright().start()
@@ -39,76 +58,219 @@ def scrape_amazon(basket_items: list[dict]) -> list[dict]:
             ],
         )
         ctx = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
             locale="en-IN",
             viewport={"width": 1280, "height": 800},
         )
         page = ctx.new_page()
-        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        page.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
 
         for item in basket_items:
             q = item.get("amazon_search") or item.get("blinkit_search") or item["name"]
             try:
-                page.goto(f"https://www.amazon.in/s?k={q.replace(' ', '+')}", timeout=20_000, wait_until="domcontentloaded")
+                page.goto(
+                    f"https://www.amazon.in/s?k={q.replace(' ', '+')}",
+                    timeout=20_000,
+                    wait_until="domcontentloaded",
+                )
                 page.wait_for_timeout(3000)
 
-                price_elements = page.query_selector_all('.a-price-whole')
-                title_elements = page.query_selector_all('h2 span.a-text-normal')
-                
-                price = None
-                matched_title = item["name"]
-                
-                for idx, el in enumerate(price_elements[:5]):
-                    text = el.inner_text().replace(',', '').strip()
-                    if text.isdigit():
-                        price = float(text)
-                        if idx < len(title_elements):
-                            matched_title = title_elements[idx].inner_text().strip()
-                        break
-                
-                # Fallback selector just in case
-                if not price:
-                    fallback = page.query_selector_all('span:text-matches("₹", "i")')
-                    for f in fallback[:5]:
-                        text = f.inner_text().replace('₹', '').replace(',', '').strip()
-                        m = re.search(r"(\d+(?:\.\d+)?)", text)
-                        if m:
-                            price = float(m.group(1))
-                            break
+                candidates = _extract_candidates(page, MAX_RESULTS_PER_QUERY)
+                pick = _pick_best_match(candidates, item)
+                if pick is None:
+                    logger.info(f"Amazon: no match for {item['name']}")
+                    continue
 
-                if price and price > 0:
-                    results.append({
-                        "platform":     "amazon",
-                        "item_id":      item["item_id"],
-                        "cpi_group":    item["cpi_group"],
-                        "item_name":    matched_title,
-                        "price":        price,
-                        "unit":         item["unit"],
-                        "price_per_kg": _price_per_kg(price, item["unit"]),
-                        "scraped_at":   scraped_at,
-                        "pincode":      PINCODE,
-                    })
-                
+                price = pick["price"]
+                results.append({
+                    "platform":     "amazon",
+                    "item_id":      item["item_id"],
+                    "cpi_group":    item["cpi_group"],
+                    "item_name":    pick["title"][:200],  # cap title length
+                    "price":        price,
+                    "unit":         item["unit"],
+                    "price_per_kg": _price_per_kg(price, item["unit"]),
+                    "scraped_at":   scraped_at,
+                    "pincode":      PINCODE,
+                })
+
                 time.sleep(1.5)
             except PWTimeout:
+                logger.info(f"Amazon: timeout for {item['name']}")
                 continue
             except Exception as e:
                 logger.error(f"Amazon: error for {item['name']}: {e}")
 
     finally:
         try: browser.close()
-        except: pass
+        except Exception: pass
         try: pw.stop()
-        except: pass
+        except Exception: pass
 
     return results
 
+
+# ─── Candidate extraction & matching ────────────────────────────────────────
+
+def _extract_candidates(page, limit: int) -> list[dict]:
+    """
+    Pull up to `limit` non-sponsored search results. Each candidate dict has:
+        title, price, sponsored, has_unit_match (filled later).
+    """
+    js = """
+    () => {
+        const tiles = Array.from(document.querySelectorAll('[data-component-type="s-search-result"]'));
+        return tiles.map(t => {
+            const sponsored = !!t.querySelector('.puis-label-popover-default')
+                || !!t.querySelector('[data-component-type="sp-sponsored-result"]')
+                || (t.innerText || '').includes('Sponsored');
+            const titleEl = t.querySelector('h2 a span') || t.querySelector('h2 span');
+            const priceEl = t.querySelector('.a-price .a-price-whole');
+            return {
+                title: titleEl ? titleEl.innerText.trim() : '',
+                priceText: priceEl ? priceEl.innerText.replace(/[,\\s]/g, '') : '',
+                sponsored: sponsored,
+            };
+        });
+    }
+    """
+    try:
+        raw = page.evaluate(js)
+    except Exception:
+        # Fallback to original selector approach if eval fails
+        raw = _legacy_extract(page)
+
+    candidates: list[dict] = []
+    for r in raw:
+        if not r.get("priceText") or not r.get("title"):
+            continue
+        m = re.match(r"(\d+(?:\.\d+)?)", r["priceText"])
+        if not m:
+            continue
+        try:
+            price = float(m.group(1))
+        except ValueError:
+            continue
+        if price <= 0 or price > 100000:  # absurd prices are matcher errors
+            continue
+        candidates.append({
+            "title":     r["title"],
+            "price":     price,
+            "sponsored": bool(r.get("sponsored")),
+        })
+        if len(candidates) >= limit:
+            break
+    return candidates
+
+
+def _legacy_extract(page) -> list[dict]:
+    """Selector-based fallback if JS eval breaks."""
+    titles = page.query_selector_all("h2 span.a-text-normal")
+    prices = page.query_selector_all(".a-price-whole")
+    out = []
+    for idx in range(min(len(titles), len(prices), MAX_RESULTS_PER_QUERY)):
+        try:
+            t = titles[idx].inner_text().strip()
+            p = prices[idx].inner_text().replace(",", "").strip()
+        except Exception:
+            continue
+        out.append({"title": t, "priceText": p, "sponsored": False})
+    return out
+
+
+def _pick_best_match(candidates: list[dict], basket_item: dict) -> Optional[dict]:
+    """
+    Filter sponsored, prefer unit-consistent matches, return median by price.
+    """
+    # Strip sponsored
+    natural = [c for c in candidates if not c["sponsored"]]
+    if not natural:
+        natural = candidates  # if EVERYTHING was sponsored, accept it
+
+    # Unit-aware filter
+    expected_unit = basket_item.get("unit", "")
+    expected_qty, expected_kind = _parse_unit(expected_unit)
+    if expected_qty is not None and expected_kind:
+        unit_matches = [c for c in natural if _title_matches_unit(c["title"], expected_qty, expected_kind)]
+        if len(unit_matches) >= 2:
+            natural = unit_matches
+
+    if not natural:
+        return None
+
+    # Median by price (robust to bait-priced outliers)
+    natural.sort(key=lambda c: c["price"])
+    if len(natural) >= 3:
+        return natural[len(natural) // 2]
+    return natural[0]  # 1-2 candidates: take the cheapest
+
+
+_UNIT_RX = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(g|gm|grams?|kg|l|litres?|liters?|ltr|ml|pcs?|pieces?)",
+    re.IGNORECASE,
+)
+
+
+def _parse_unit(unit_str: str) -> tuple[Optional[float], str]:
+    m = _UNIT_RX.search(unit_str)
+    if not m:
+        return None, ""
+    qty = float(m.group(1))
+    kind = m.group(2).lower()
+    if kind in ("kg",):
+        return qty, "kg"
+    if kind in ("g", "gm", "gram", "grams"):
+        return qty / 1000.0, "kg"
+    if kind in ("l", "ltr", "litre", "litres", "liter", "liters"):
+        return qty, "l"
+    if kind in ("ml",):
+        return qty / 1000.0, "l"
+    if kind in ("pc", "pcs", "piece", "pieces"):
+        return qty, "pc"
+    return None, ""
+
+
+def _title_matches_unit(title: str, expected_qty: float, expected_kind: str) -> bool:
+    """Check if the title mentions a quantity within ±20% of expected."""
+    for m in _UNIT_RX.finditer(title):
+        qty = float(m.group(1))
+        kind = m.group(2).lower()
+        # Normalise to base units
+        kind_qty: Optional[tuple[float, str]] = None
+        if kind in ("kg",):
+            kind_qty = (qty, "kg")
+        elif kind in ("g", "gm", "gram", "grams"):
+            kind_qty = (qty / 1000.0, "kg")
+        elif kind in ("l", "ltr", "litre", "litres", "liter", "liters"):
+            kind_qty = (qty, "l")
+        elif kind in ("ml",):
+            kind_qty = (qty / 1000.0, "l")
+        elif kind in ("pc", "pcs", "piece", "pieces"):
+            kind_qty = (qty, "pc")
+        if not kind_qty:
+            continue
+        title_qty, title_kind = kind_qty
+        if title_kind != expected_kind:
+            continue
+        if abs(title_qty - expected_qty) / max(expected_qty, 0.001) <= 0.20:
+            return True
+    return False
+
+
 def _price_per_kg(price: float, unit: str) -> Optional[float]:
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(g|gm|grams?|kg|l|litre?s?|ltr|ml)", unit.lower())
-    if not m: return None
-    qty, utype = float(m.group(1)), m.group(2)
-    if utype in ("kg", "l", "litre", "litres", "liter", "liters", "ltr"):
-        return round(price / qty, 2)
-    if utype in ("g", "gm", "gram", "grams", "ml"):
-        return round(price / qty * 1000, 2)
+    m = _UNIT_RX.search(unit)
+    if not m:
+        return None
+    qty = float(m.group(1))
+    kind = m.group(2).lower()
+    if kind in ("kg", "l", "litre", "litres", "liter", "liters", "ltr"):
+        return round(price / qty, 2) if qty else None
+    if kind in ("g", "gm", "gram", "grams", "ml"):
+        return round(price / qty * 1000, 2) if qty else None
     return None
