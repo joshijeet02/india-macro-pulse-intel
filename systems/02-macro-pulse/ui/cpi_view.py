@@ -79,6 +79,16 @@ def render_cpi_section():
     if chart_cols:
         st.line_chart(df[list(chart_cols.keys())].rename(columns=chart_cols))
 
+    # Download the full series as CSV — analyst ergonomics
+    full_df = pd.DataFrame(history)
+    st.download_button(
+        "Download CPI history (CSV)",
+        data=full_df.to_csv(index=False).encode("utf-8"),
+        file_name="india_cpi_history.csv",
+        mime="text/csv",
+        help="Export the full 12-month series for use in your own models.",
+    )
+
     if any(r.get("consensus_forecast") is not None for r in history):
         st.subheader("Surprise vs Consensus")
         rows = []

@@ -86,3 +86,12 @@ def render_iip_section():
                   if c in df.columns}
     if trend_cols:
         st.line_chart(df[list(trend_cols.keys())].rename(columns=trend_cols))
+
+    full_df = pd.DataFrame(history)
+    st.download_button(
+        "Download IIP history (CSV)",
+        data=full_df.to_csv(index=False).encode("utf-8"),
+        file_name="india_iip_history.csv",
+        mime="text/csv",
+        help="Export the full 12-month series for use in your own models.",
+    )
