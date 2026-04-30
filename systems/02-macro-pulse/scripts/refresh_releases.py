@@ -7,7 +7,9 @@ Designed to be invoked by .github/workflows/refresh-data.yml on a daily cron.
 Exit codes:
     0 → at least one new release was added (workflow should commit + push)
     1 → no new releases (workflow should do nothing)
-    2 → parser failure or unexpected error (workflow should open an issue)
+    2 → parser failure with NO successful additions (open issue, don't commit)
+    3 → partial success: at least one new release added AND at least one
+        parser failed. Workflow should commit AND open an issue.
 
 Usage:
     python scripts/refresh_releases.py                # live scrape
@@ -30,6 +32,7 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from scrapers._mospi_api import fetch_latest_releases, find_latest_release  # noqa: E402
 from scrapers.mospi_cpi import fetch_latest_cpi  # noqa: E402
 from scrapers.mospi_iip import fetch_latest_iip  # noqa: E402
 from seed.historical_data import CPI_HISTORY, IIP_HISTORY  # noqa: E402
@@ -40,6 +43,7 @@ UPDATES_PATH = ROOT / "data" / "release_updates.json"
 EXIT_NEW = 0
 EXIT_NOCHANGE = 1
 EXIT_FAIL = 2
+EXIT_PARTIAL = 3   # at least one indicator added AND at least one failed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,8 +73,11 @@ def _load_updates() -> dict:
 
 
 def _save_updates(data: dict) -> None:
+    """Atomic write: temp file + rename, so a crash mid-write can't corrupt the JSON."""
     UPDATES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    UPDATES_PATH.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n")
+    tmp = UPDATES_PATH.with_suffix(UPDATES_PATH.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n")
+    tmp.replace(UPDATES_PATH)
 
 
 def _existing_latest(indicator: str, updates: dict) -> Optional[str]:
@@ -116,45 +123,58 @@ def _normalize_iip(payload: dict) -> dict:
     return out
 
 
-def refresh_cpi(updates: dict, use_fixture: bool) -> tuple[bool, Optional[str]]:
-    """Returns (added, error). added=True iff a new entry was appended."""
-    payload = fetch_latest_cpi(use_fixture=use_fixture)
+def _refresh_indicator(
+    updates: dict,
+    indicator: str,            # "CPI" or "IIP"
+    fetch_fn,                  # fetch_latest_cpi / fetch_latest_iip
+    normalize_fn,              # _normalize_cpi / _normalize_iip
+    use_fixture: bool,
+    api_releases: Optional[list[dict]] = None,
+) -> tuple[bool, Optional[str]]:
+    """
+    Shared driver that distinguishes "no candidate in API window" (not a
+    failure — common case) from "parser broke on a found PDF" (real failure
+    that should surface as a GitHub issue).
+
+    Returns (added, error_reason). error_reason is None on success or
+    no-candidate; non-None only on actual parser/network failure.
+    """
+    key = indicator.lower()
+
+    if not use_fixture and api_releases is not None:
+        # Cheap check: if no candidate matches in the API window, skip the
+        # full scrape and don't treat it as a failure.
+        if find_latest_release(api_releases, indicator) is None:
+            log.info(f"{indicator}: no candidate in MOSPI API window — nothing to refresh")
+            return False, None
+
+    payload = fetch_fn(use_fixture=use_fixture)
     if payload is None:
-        return False, "fetch_latest_cpi returned None (parser failure)"
+        return False, f"fetch_latest_{key} returned None (parser failure)"
 
     candidate_month = payload.get("reference_month")
     if not candidate_month:
-        return False, "no reference_month in payload"
+        return False, f"{indicator}: payload missing reference_month"
 
-    existing_latest = _existing_latest("cpi", updates)
+    existing_latest = _existing_latest(key, updates)
     if not _is_newer(candidate_month, existing_latest):
-        log.info(f"CPI: latest={existing_latest}, scraped={candidate_month} → no change")
+        log.info(f"{indicator}: latest={existing_latest}, scraped={candidate_month} → no change")
         return False, None
 
-    record = _normalize_cpi(payload)
-    updates["cpi"].append(record)
-    log.info(f"CPI: ADDED {candidate_month} (headline={record['headline_yoy']}%)")
+    record = normalize_fn(payload)
+    updates[key].append(record)
+    log.info(f"{indicator}: ADDED {candidate_month} (headline={record['headline_yoy']}%)")
     return True, None
 
 
-def refresh_iip(updates: dict, use_fixture: bool) -> tuple[bool, Optional[str]]:
-    payload = fetch_latest_iip(use_fixture=use_fixture)
-    if payload is None:
-        return False, "fetch_latest_iip returned None (parser failure)"
+def refresh_cpi(updates: dict, use_fixture: bool, api_releases=None) -> tuple[bool, Optional[str]]:
+    return _refresh_indicator(updates, "CPI", fetch_latest_cpi, _normalize_cpi,
+                              use_fixture, api_releases)
 
-    candidate_month = payload.get("reference_month")
-    if not candidate_month:
-        return False, "no reference_month in payload"
 
-    existing_latest = _existing_latest("iip", updates)
-    if not _is_newer(candidate_month, existing_latest):
-        log.info(f"IIP: latest={existing_latest}, scraped={candidate_month} → no change")
-        return False, None
-
-    record = _normalize_iip(payload)
-    updates["iip"].append(record)
-    log.info(f"IIP: ADDED {candidate_month} (headline={record['headline_yoy']}%)")
-    return True, None
+def refresh_iip(updates: dict, use_fixture: bool, api_releases=None) -> tuple[bool, Optional[str]]:
+    return _refresh_indicator(updates, "IIP", fetch_latest_iip, _normalize_iip,
+                              use_fixture, api_releases)
 
 
 def main() -> int:
@@ -171,18 +191,24 @@ def main() -> int:
         parser.error("--cpi-only and --iip-only are mutually exclusive")
 
     updates = _load_updates()
+
+    # Single API hit shared by both indicators (reduces load on MOSPI server
+    # and avoids two-shot inconsistency when releases roll out of the window
+    # between calls).
+    api_releases = None if args.use_fixture else fetch_latest_releases()
+
     any_added = False
     any_failed = False
 
     if not args.iip_only:
-        added, err = refresh_cpi(updates, args.use_fixture)
+        added, err = refresh_cpi(updates, args.use_fixture, api_releases)
         any_added |= added
         if err:
             log.error(f"CPI failure: {err}")
             any_failed = True
 
     if not args.cpi_only:
-        added, err = refresh_iip(updates, args.use_fixture)
+        added, err = refresh_iip(updates, args.use_fixture, api_releases)
         any_added |= added
         if err:
             log.error(f"IIP failure: {err}")
@@ -192,11 +218,11 @@ def main() -> int:
         _save_updates(updates)
         log.info(f"Wrote {UPDATES_PATH}")
 
+    # Exit code precedence: partial > pure-fail > new > nochange
+    if any_added and any_failed:
+        return EXIT_PARTIAL
     if any_failed:
-        # Treat as failure only if NOTHING new came through. A successful
-        # CPI add is still a win even if IIP failed in the same run.
-        if not any_added:
-            return EXIT_FAIL
+        return EXIT_FAIL
     return EXIT_NEW if any_added else EXIT_NOCHANGE
 
 

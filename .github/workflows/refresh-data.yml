@@ -61,6 +61,8 @@ jobs:
           case $rc in
             0) echo "status=new"      >> "$GITHUB_OUTPUT" ;;
             1) echo "status=nochange" >> "$GITHUB_OUTPUT" ;;
+            2) echo "status=fail"     >> "$GITHUB_OUTPUT" ;;
+            3) echo "status=partial"  >> "$GITHUB_OUTPUT" ;;
             *) echo "status=fail"     >> "$GITHUB_OUTPUT" ;;
           esac
           echo "Refresh script exit code: $rc"
@@ -68,7 +70,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/systems/02-macro-pulse
 
       - name: Commit & push if updated
-        if: steps.refresh.outputs.status == 'new'
+        if: steps.refresh.outputs.status == 'new' || steps.refresh.outputs.status == 'partial'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -81,7 +83,7 @@ jobs:
           git push
 
       - name: Open issue on parser failure
-        if: steps.refresh.outputs.status == 'fail'
+        if: steps.refresh.outputs.status == 'fail' || steps.refresh.outputs.status == 'partial'
         uses: actions/github-script@v7
         with:
           script: |

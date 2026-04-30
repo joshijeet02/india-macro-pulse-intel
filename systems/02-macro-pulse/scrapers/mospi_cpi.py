@@ -1,13 +1,14 @@
 """
 MOSPI CPI press release scraper.
 
-Same tiered strategy as IIP: latest PDF discovery, table-first extraction,
-anchored regex fallback, sanity checks. Returns None on failure.
+Same pattern as IIP: JSON-API discovery + prose extraction.
 
 Note on the 2024=100 base year (effective Jan 2026): MOSPI replaced the
-"Fuel & Light" group with "Housing, water, electricity, gas and other fuels".
-The fuel_yoy field will frequently be None for releases after that switch —
-that's expected, not a bug.
+"Fuel & Light" group with "Housing, water, electricity, gas and other
+fuels", so fuel_yoy is frequently None for releases after that switch.
+That's expected — sanity_check_release tolerates fuel=None as long as the
+headline parsed. We do NOT silently accept *any* failure though; the
+bypass that did so previously has been removed.
 """
 from __future__ import annotations
 
@@ -17,115 +18,94 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-import requests
-
+from scrapers._mospi_api import (
+    DEFAULT_HEADERS, absolute_pdf_url, fetch_latest_releases, find_latest_release,
+)
 from scrapers._pdf_extract import (
+    extract_cpi_from_prose,
     extract_reference_month,
-    extract_yoy,
     fetch_pdf_bytes,
-    open_pdf_tables,
     open_pdf_text,
     sanity_check_release,
 )
 
-logger = logging.getLogger(__name__)
-
-MOSPI_PRESS_RELEASE_BASE = "https://mospi.gov.in"
-MOSPI_CPI_LIST_URL = (
-    "https://mospi.gov.in/web/mospi/press-releases/-/asset_publisher/"
-    "5XjCDPHnBClZ/content/consumer-price-indices-cpi"
-)
+log = logging.getLogger(__name__)
 
 FIXTURE_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "sample_cpi.json"
 
-REQUIRED_COMPONENTS = ("food_yoy",)  # fuel may be None under 2024=100; food
-                                     # is the only consistently-required field.
-
-USER_AGENT = "Mozilla/5.0 (research bot; joshijeet02@gmail.com)"
+# Only food_yoy is strictly required — fuel may be absent under 2024=100.
+REQUIRED_COMPONENTS = ("food_yoy",)
 
 
 def fetch_latest_cpi(use_fixture: bool = False) -> Optional[dict]:
-    """
-    Fetch latest CPI release from MOSPI.
-
-    Returns dict with: reference_month, release_date, headline_yoy, food_yoy,
-    fuel_yoy, source. Returns None on any failure.
-    """
+    """Fetch latest CPI release, or None on any failure."""
     if use_fixture:
         return json.loads(FIXTURE_PATH.read_text())
     try:
         return _scrape_mospi_cpi()
-    except Exception as e:
-        logger.warning(f"[mospi_cpi] scrape failed: {e}")
+    except Exception as exc:
+        log.warning(f"[mospi_cpi] scrape failed: {exc}")
         return None
 
 
 def parse_cpi_pdf(pdf_bytes: bytes, source_url: str = "") -> Optional[dict]:
     """Public for testing — parse an already-downloaded PDF blob."""
     text = open_pdf_text(pdf_bytes, max_pages=4)
-    tables = open_pdf_tables(pdf_bytes, max_pages=4)
 
     reference_month = extract_reference_month(text)
     if not reference_month:
-        logger.warning("[mospi_cpi] cannot extract reference month")
+        log.warning("[mospi_cpi] cannot extract reference month")
         return None
+
+    prose = extract_cpi_from_prose(text)
 
     payload = {
         "reference_month": reference_month,
         "release_date":    date.today().isoformat(),
-        "headline_yoy":    extract_yoy(tables, text, "General Index",
-                                       aliases=("CPI Combined", "All Groups")),
-        "food_yoy":        extract_yoy(
-            tables, text, "Food and Beverages",
-            aliases=("Food & Beverages", "Food",),
-        ),
-        "fuel_yoy":        extract_yoy(
-            tables, text, "Fuel and Light",
-            aliases=("Fuel & Light",),
-        ),
+        "headline_yoy":    prose.get("headline_yoy"),
+        "food_yoy":        prose.get("food_yoy"),
+        "fuel_yoy":        prose.get("fuel_yoy"),
         "source":          source_url,
     }
 
     ok, reason = sanity_check_release(payload, REQUIRED_COMPONENTS)
     if not ok:
-        logger.warning(f"[mospi_cpi] sanity check failed: {reason}")
-        # Allow records with food_yoy=None for post-2024 base year switch:
-        # if only food/fuel are missing but headline parsed, still return it.
-        if payload.get("headline_yoy") is not None:
-            logger.info("[mospi_cpi] keeping headline-only record (post-2024-base)")
+        # Tightened: only allow headline-only records under the 2024=100
+        # base year (Jan 2026 onward) where the food_yoy field is
+        # genuinely unavailable. Older periods MUST have food_yoy.
+        if (
+            payload.get("headline_yoy") is not None
+            and payload.get("food_yoy") is None
+            and reference_month
+            and reference_month >= "2026-01"
+        ):
+            log.info(f"[mospi_cpi] keeping headline-only record for {reference_month} (post-2024-base)")
             return payload
+        log.warning(f"[mospi_cpi] sanity check failed: {reason}")
         return None
 
     return payload
 
 
 def _scrape_mospi_cpi() -> Optional[dict]:
-    headers = {"User-Agent": USER_AGENT}
-    resp = requests.get(MOSPI_CPI_LIST_URL, headers=headers, timeout=15)
-    resp.raise_for_status()
+    releases = fetch_latest_releases()
+    if not releases:
+        raise RuntimeError("MOSPI home API returned no releases")
 
-    pdf_url = _find_latest_cpi_pdf(resp.text)
+    latest = find_latest_release(releases, "CPI")
+    if not latest:
+        log.info("[mospi_cpi] no CPI release in latest 4 — nothing new")
+        return None
+
+    pdf_url = absolute_pdf_url(latest["file_one"])
     if not pdf_url:
-        raise ValueError("No CPI PDF link found on MOSPI press release page")
+        raise RuntimeError(f"CPI entry has no PDF URL: {latest.get('id')}")
 
-    pdf_bytes = fetch_pdf_bytes(pdf_url, headers, timeout=30)
-    return parse_cpi_pdf(pdf_bytes, source_url=pdf_url)
-
-
-def _find_latest_cpi_pdf(html: str) -> Optional[str]:
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(html, "html.parser")
-    candidates: list[str] = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if not href.lower().endswith(".pdf"):
-            continue
-        haystack = (href + " " + (a.get_text() or "")).lower()
-        if "cpi" not in haystack and "consumer price" not in haystack:
-            continue
-        if any(skip in haystack for skip in ("methodology", "annexure", "annex-")):
-            continue
-        candidates.append(href if href.startswith("http") else MOSPI_PRESS_RELEASE_BASE + href)
-
-    return candidates[0] if candidates else None
+    log.info(f"[mospi_cpi] fetching {pdf_url}")
+    pdf_bytes = fetch_pdf_bytes(pdf_url, DEFAULT_HEADERS, timeout=60)
+    payload = parse_cpi_pdf(pdf_bytes, source_url=pdf_url)
+    if payload:
+        published = latest.get("published_date") or latest.get("start_date")
+        if published:
+            payload["release_date"] = published[:10]
+    return payload
