@@ -32,23 +32,24 @@ def render_mode_toggle() -> None:
         st.session_state[MODE_KEY] = ECONOMIST
 
     with st.sidebar:
-        st.markdown("### View Mode")
+        st.markdown("### Analysis tone")
         st.radio(
-            "Reading audience",
+            "Tone",
             options=[ECONOMIST, PLAIN],
             format_func=lambda v: _LABELS[v],
             key=MODE_KEY,
             label_visibility="collapsed",
             help=(
                 "Economist: analyst-style language for macro readers.  "
-                "Plain English: reframed for non-economist readers — "
-                "students, journalists, curious investors."
+                "Plain English: reframes the 'What This Means' commentary "
+                "for non-economist readers. Charts, metrics, and tables "
+                "stay the same regardless of mode."
             ),
         )
         if st.session_state[MODE_KEY] == PLAIN:
             st.caption(
-                "💡 Plain English mode is on. Hover over **highlighted terms** "
-                "anywhere in the app for short definitions."
+                "💡 Plain English is applied to the analyst commentary tabs. "
+                "Use the **glossary expanders** on each tab for term definitions."
             )
 
 
@@ -69,10 +70,8 @@ def assessment_text(assessment: dict) -> str:
 
 def glossary_tooltip(term: str, label: str | None = None) -> str:
     """
-    Inline glossary tooltip Streamlit-flavoured. Returns a Markdown snippet
-    that uses Streamlit's own tooltip syntax — `:gray-background[term]` with
-    a `?` indicator looks closest, but for portability we use a simple HTML
-    abbr with the definition as title.
+    Inline glossary tooltip — returns an HTML <abbr> with the definition as
+    the title attribute. Use with `st.markdown(..., unsafe_allow_html=True)`.
     """
     label = label or term
     definition = _glossary_lookup(term)
@@ -80,3 +79,18 @@ def glossary_tooltip(term: str, label: str | None = None) -> str:
         return label
     safe = definition.replace('"', "&quot;")
     return f'<abbr title="{safe}" style="text-decoration: underline dotted; cursor: help;">{label}</abbr>'
+
+
+def render_glossary_expander(terms: list[str], context_label: str = "this section") -> None:
+    """
+    Render an expander populated with definitions for the given terms.
+    Always visible regardless of mode — economists may also want a quick
+    reminder of what we mean by 'core' vs 'headline'.
+    """
+    from engine.glossary import GLOSSARY
+    rows = [(t, GLOSSARY[t]) for t in terms if t in GLOSSARY]
+    if not rows:
+        return
+    with st.expander(f"📖 What do these terms mean? ({len(rows)})"):
+        for term, definition in rows:
+            st.markdown(f"**{term}** — {definition}")

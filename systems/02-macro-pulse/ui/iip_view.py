@@ -4,7 +4,7 @@ from db.store import IIPStore
 from engine.iip_decomposer import assess_iip_composition
 from engine.surprise_calc import compute_surprise
 from engine.assessments import assess_iip
-from ui._mode import assessment_text
+from ui._mode import assessment_text, render_glossary_expander
 
 _TONE_FN = {
     "success": st.success,
@@ -30,6 +30,11 @@ def render_iip_section():
                 help="Investment demand proxy")
     col3.metric("Consumer Durables", f"{latest.get('consumer_durables_yoy') or '—'}%",
                 help="Urban discretionary demand")
+
+    render_glossary_expander(
+        ["IIP", "Capital Goods", "Consumer Durables", "Consumer Non-Durables",
+         "Use-Based Classification", "Capex"],
+    )
 
     use_keys = [
         ("capital_goods_yoy",        "Capital Goods"),

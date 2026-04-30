@@ -19,7 +19,7 @@ def test_to_ics_emits_one_vevent_per_release():
         ScheduledRelease("CPI", "Mar-2026", date(2026, 4, 14)),
         ScheduledRelease("IIP", "Feb-2026", date(2026, 4, 30)),
     ]
-    body = to_ics(releases)
+    body = to_ics(releases, include_past=True)
     assert body.count("BEGIN:VEVENT") == 2
     assert body.count("END:VEVENT") == 2
     assert "CPI release" in body
@@ -28,9 +28,21 @@ def test_to_ics_emits_one_vevent_per_release():
     assert "20260430" in body
 
 
-def test_to_ics_default_uses_full_schedule():
-    body = to_ics()
-    assert body.count("BEGIN:VEVENT") == len(RELEASE_SCHEDULE)
+def test_to_ics_default_skips_past_releases():
+    """By default, past releases are filtered out — users importing the
+    calendar care about what's coming, not stale events."""
+    past = ScheduledRelease("CPI", "Jan-2020", date(2020, 2, 12))
+    future = ScheduledRelease("CPI", "Jan-2099", date(2099, 2, 12))
+    body = to_ics([past, future])
+    assert body.count("BEGIN:VEVENT") == 1
+    assert "20990212" in body
+    assert "20200212" not in body
+
+
+def test_to_ics_include_past_overrides_filter():
+    past = ScheduledRelease("CPI", "Jan-2020", date(2020, 2, 12))
+    body = to_ics([past], include_past=True)
+    assert "20200212" in body
 
 
 def test_reference_period_conversion():

@@ -3,7 +3,7 @@ import pandas as pd
 from db.store import CPIStore
 from engine.surprise_calc import compute_surprise
 from engine.assessments import assess_cpi
-from ui._mode import assessment_text
+from ui._mode import assessment_text, render_glossary_expander
 
 _TONE_FN = {
     "success": st.success,
@@ -45,6 +45,10 @@ def render_cpi_section():
              f"(base 2024=100 from Jan 2026 — old weights no longer apply)"
     )
     st.caption(comp_note + " · Food 45.86% · Fuel 6.84% · Core 47.30%")
+    render_glossary_expander(
+        ["Headline CPI", "Core CPI", "Food Inflation", "Fuel Inflation",
+         "RBI Target", "Real Rates", "Disinflation", "Base Effect"],
+    )
 
     # ── Economic Assessments ────────────────────────────────────────────────
     assessments = assess_cpi(history)

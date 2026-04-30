@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import zoneinfo
 from engine.release_calendar import (
     RELEASE_SCHEDULE, days_until, get_upcoming_releases,
@@ -16,11 +16,14 @@ def render_release_calendar():
     # Filter out releases that have already landed in the data (auto-derived).
     upcoming_all = get_upcoming_releases(as_of=today, days_ahead=120)
     upcoming = [r for r in upcoming_all if not has_been_released(r)]
-    # Also include past-due releases that haven't shown up yet (MOSPI delayed)
+    # Late releases: anything within the last 14 days that hasn't shown up
+    # in the data yet. Sliding window so a release expected March 31 still
+    # shows up as "5d late" on April 5 (the calendar-month-bound version
+    # would have made it disappear).
+    late_cutoff = today - timedelta(days=14)
     past_due = [
         r for r in RELEASE_SCHEDULE
-        if r.expected_date < today
-        and r.expected_date >= today.replace(day=1)  # this month only
+        if late_cutoff <= r.expected_date < today
         and not has_been_released(r)
     ]
     visible = past_due + upcoming

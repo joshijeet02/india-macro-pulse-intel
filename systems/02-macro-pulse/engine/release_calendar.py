@@ -109,14 +109,23 @@ def has_been_released(release: ScheduledRelease) -> bool:
 
 # ─── ICS calendar export ─────────────────────────────────────────────────────
 
-def to_ics(releases: list[ScheduledRelease] | None = None) -> str:
+def to_ics(
+    releases: list[ScheduledRelease] | None = None,
+    include_past: bool = False,
+    as_of: date | None = None,
+) -> str:
     """
-    Generate an iCalendar (.ics) file body covering the given releases (or
-    the full RELEASE_SCHEDULE). Suitable for `st.download_button` →
-    "Add to Google Calendar / Apple Calendar".
+    Generate an iCalendar (.ics) file body covering the given releases.
+
+    By default, only emits events with expected_date >= today — users
+    importing the calendar care about what's coming up, not 18-month-old
+    events polluting their calendar view.
     """
     if releases is None:
         releases = RELEASE_SCHEDULE
+    if not include_past:
+        cutoff = as_of or date.today()
+        releases = [r for r in releases if r.expected_date >= cutoff]
 
     now_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     lines = [
