@@ -3,11 +3,14 @@ E-commerce price tracker tab.
 Shows Amazon basket prices, Laspeyres index, and CPI food overlay.
 
 Data lifecycle:
-- Real prices accumulate via the weekly GH Action (scripts/scrape_amazon.py),
-  persisted to data/amazon_prices.json, and hydrated into SQLite on app boot.
-- The 'Run Price Scrape' button still works for ad-hoc local testing.
-- The legacy 'Simulate 180-Day History' button is gated behind the
-  MACRO_PULSE_DEV env var since the cron now produces real history.
+- The 'Run Price Scrape' button is the ONLY scraper trigger in production.
+  Irregular human-driven clicks across visitors are far less detectable than
+  a scheduled cron, which Amazon's bot defences pattern-match aggressively.
+- Each successful scrape persists to data/amazon_prices.json (committed to
+  the repo via local development workflow) so the index history accumulates
+  organically rather than vanishing on Streamlit Cloud restarts.
+- The legacy 'Simulate Demo History' button is gated behind MACRO_PULSE_DEV
+  for local UI testing; cloud users see only real data.
 """
 import os
 import streamlit as st
@@ -28,9 +31,11 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     )
 
     st.success(
-        "**Methodology & Logic:** Traditional CPI data is released with a 15-to-45 day lag. "
-        "To generate a leading indicator (alpha), we autonomously scrape real-time prices for 20 high-weight grocery items directly from Amazon India. "
-        "By applying a Laspeyres index formula (comparing current aggregated costs against a fixed base-period cost), we can anticipate the food inflation vector weeks before MOSPI publishes official data."
+        "**Methodology & Logic:** Official CPI is released with a 15–45 day lag. "
+        "To anticipate it, we scrape current prices for 20 high-weight CPI grocery items "
+        "from Amazon India and compute a Laspeyres index (current basket cost vs a fixed base). "
+        "Click **Run Price Scrape** below to refresh — irregular human-driven scrapes from "
+        "visitor sessions stay below Amazon's anti-bot radar much better than a scheduled cron."
     )
 
 
@@ -55,11 +60,16 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     with col_status:
         am_last = store.last_scraped_at("amazon")
         if am_last:
-            st.caption(f"Last scraped · Amazon: {am_last}")
+            from seed.amazon_persist import load_persisted_prices
+            persisted_count = len({(p['item_id'], p['scraped_at']) for p in load_persisted_prices()})
+            st.caption(
+                f"Last scraped · Amazon: {am_last} · "
+                f"{persisted_count} observations persisted"
+            )
         else:
             st.caption(
-                "No scrape data yet. Real history accumulates via the weekly "
-                "GitHub Action — or click **Run Price Scrape** for an instant local test."
+                "No price data yet. Click **Run Price Scrape** to fetch the basket "
+                "(takes ~2–3 min). Each successful scrape adds an observation."
             )
 
     # ── Show results/errors from previous scrape (persisted across rerun) ────

@@ -63,15 +63,22 @@ from seed.amazon_persist import hydrate_db_from_json
 hydrate_db_from_json()
 
 # Recompute the basket index history from hydrated price observations.
-# Without this, the ecomm_index table starts empty even though prices are loaded.
+# Backfills any scrape runs that don't yet have a corresponding index row —
+# a count comparison rather than a boolean check, so a single manually-triggered
+# scrape can't permanently lock the chart at one point.
 from db.store import EcommStore
 from engine.ecomm_index import compute_index
 _ecomm = EcommStore()
 if _ecomm.has_data():
-    _runs = _ecomm.get_scrape_runs("amazon", limit=120)
+    _runs = set(_ecomm.get_scrape_runs("amazon", limit=10000))
     _base = _ecomm.get_base_prices("amazon")
-    if _base and not _ecomm.get_index_history("amazon", limit=1):
-        for _ts in reversed(_runs):  # oldest first
+    if _base:
+        _existing_idx_ts = {
+            r["computed_at"]
+            for r in _ecomm.get_index_history("amazon", limit=10000)
+        }
+        _missing = sorted(_runs - _existing_idx_ts)  # oldest first
+        for _ts in _missing:
             _snapshot = _ecomm.get_prices_at("amazon", _ts)
             _idx = compute_index(_snapshot, _base)
             if _idx["index_value"] is not None:

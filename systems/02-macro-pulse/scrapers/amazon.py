@@ -142,9 +142,12 @@ def _extract_candidates(page, limit: int) -> list[dict]:
     """
     try:
         raw = page.evaluate(js)
-    except Exception:
-        # Fallback to original selector approach if eval fails
-        raw = _legacy_extract(page)
+    except Exception as exc:
+        # If page.evaluate breaks (Amazon DOM changed badly), the only
+        # honest answer is "scraper blocked" — exit cleanly rather than
+        # pretend a stale selector fallback worked.
+        logger.warning(f"Amazon: page.evaluate failed: {exc}")
+        return []
 
     candidates: list[dict] = []
     for r in raw:
@@ -167,21 +170,6 @@ def _extract_candidates(page, limit: int) -> list[dict]:
         if len(candidates) >= limit:
             break
     return candidates
-
-
-def _legacy_extract(page) -> list[dict]:
-    """Selector-based fallback if JS eval breaks."""
-    titles = page.query_selector_all("h2 span.a-text-normal")
-    prices = page.query_selector_all(".a-price-whole")
-    out = []
-    for idx in range(min(len(titles), len(prices), MAX_RESULTS_PER_QUERY)):
-        try:
-            t = titles[idx].inner_text().strip()
-            p = prices[idx].inner_text().replace(",", "").strip()
-        except Exception:
-            continue
-        out.append({"title": t, "priceText": p, "sponsored": False})
-    return out
 
 
 def _pick_best_match(candidates: list[dict], basket_item: dict) -> Optional[dict]:

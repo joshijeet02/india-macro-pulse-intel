@@ -59,13 +59,16 @@ def append_observations(observations: Iterable[dict]) -> int:
 
     payload = {
         "_comment": (
-            "Amazon basket scrape history. Appended by the weekly GH Action; "
-            "hydrated into SQLite on app boot. Hand-edits are tolerated but "
-            "not recommended — they may collide with the next automated run."
+            "Amazon basket scrape history. Appended whenever a user clicks "
+            "'Run Price Scrape' in the deployed app or runs scripts/scrape_amazon.py. "
+            "Hydrated into SQLite on app boot."
         ),
         "observations": existing + added,
     }
-    PRICES_PATH.write_text(json.dumps(payload, indent=2) + "\n")
+    # Atomic write: temp file + rename so a crash mid-write can't corrupt the file.
+    tmp = PRICES_PATH.with_suffix(PRICES_PATH.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n")
+    tmp.replace(PRICES_PATH)
     return len(added)
 
 
