@@ -1,5 +1,22 @@
 {
   "_comment": "Autonomous additions to the CPI/IIP series, written by scripts/refresh_releases.py. Merged on top of seed/historical_data.py at app boot. Newer reference_months override hardcoded entries. Hand-edits are fine but the schedule of runs will overwrite this file when MOSPI publishes a fresh release.",
   "cpi": [],
-  "iip": []
+  "iip": [
+    {
+      "reference_month": "2026-03",
+      "release_date": "2026-04-28",
+      "headline_yoy": 4.1,
+      "manufacturing_yoy": 4.3,
+      "mining_yoy": 5.5,
+      "electricity_yoy": 0.8,
+      "capital_goods_yoy": 14.6,
+      "consumer_durables_yoy": 5.3,
+      "consumer_nondurables_yoy": 1.1,
+      "infra_construction_yoy": 6.7,
+      "primary_goods_yoy": 2.2,
+      "intermediate_goods_yoy": 3.3,
+      "consensus_forecast": null,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1777370981972_ac151bbf-29ab-4f2c-a10e-bd727a4d3564_IIP_Press_release_March_2026.pdf"
+    }
+  ]
 }
