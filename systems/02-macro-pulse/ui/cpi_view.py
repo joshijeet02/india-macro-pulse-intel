@@ -3,6 +3,7 @@ import pandas as pd
 from db.store import CPIStore
 from engine.surprise_calc import compute_surprise
 from engine.assessments import assess_cpi
+from engine.cross_ref import cpi_context_for_print
 from ui._mode import assessment_text, render_glossary_expander
 
 _TONE_FN = {
@@ -49,6 +50,9 @@ def render_cpi_section():
         ["Headline CPI", "Core CPI", "Food Inflation", "Fuel Inflation",
          "RBI Target", "Real Rates", "Disinflation", "Base Effect"],
     )
+
+    # ── Cross-reference with RBI's latest projection ───────────────────────
+    _render_rbi_projection_panel(latest)
 
     # ── Economic Assessments ────────────────────────────────────────────────
     assessments = assess_cpi(history)
@@ -109,3 +113,41 @@ def render_cpi_section():
                 })
         if rows:
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _render_rbi_projection_panel(latest_print: dict) -> None:
+    """
+    Surface RBI's most recent CPI projection alongside the latest print, with
+    a print-vs-projection delta and a deep-link to the RBI source. Quietly
+    hides the panel if rbi-comms data isn't available (e.g., sister app not
+    yet checked out, JSON sidecar missing).
+    """
+    ctx = cpi_context_for_print(latest_print)
+    if ctx is None:
+        return
+
+    st.markdown("##### RBI projection vs latest print")
+    cols = st.columns([1.2, 1.2, 2])
+    cols[0].metric(
+        f"RBI projection ({ctx['projection_fy']})",
+        f"{ctx['rbi_projection']:.2f}%",
+        help=f"From MPC meeting {ctx['mpc_meeting_date']} (stance: {ctx['stance']})",
+    )
+    if ctx["surprise_pp"] is not None:
+        delta_label = (
+            "above projection" if ctx["surprise_pp"] > 0
+            else "below projection" if ctx["surprise_pp"] < 0
+            else "on projection"
+        )
+        cols[1].metric(
+            "Print vs RBI",
+            f"{ctx['surprise_pp']:+.2f}pp",
+            delta_label,
+            delta_color="off",
+        )
+    with cols[2]:
+        st.markdown(ctx["comment"])
+        if ctx.get("mpc_url"):
+            st.caption(
+                f"[Read RBI MPC ({ctx['mpc_meeting_date']}) ↗]({ctx['mpc_url']})"
+            )

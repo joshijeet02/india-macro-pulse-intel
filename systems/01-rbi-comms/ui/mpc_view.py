@@ -17,6 +17,7 @@ import streamlit as st
 
 from ai.brief import generate_communication_brief
 from db.store import BriefStore, CommunicationStore, MPCDecisionStore
+from engine.cross_ref import macro_print_summary
 from engine.diff_engine import diff_documents, summarize_diff
 from engine.stance_engine import analyze_communication
 
@@ -47,6 +48,9 @@ def render_mpc_view() -> None:
 
     # ─── Hero ──────────────────────────────────────────────────────────────
     _render_hero(latest_doc, latest_decision, prior_decision)
+
+    # Cross-reference: latest CPI/IIP prints from macro-pulse
+    _render_macro_callout(latest_decision)
 
     st.divider()
 
@@ -138,6 +142,54 @@ def _format_change(bps: int) -> str | None:
     if bps == 0:
         return "unchanged"
     return f"+{bps}bp" if bps > 0 else f"{bps}bp"
+
+
+def _render_macro_callout(latest_decision: dict | None) -> None:
+    """
+    Show the latest CPI/IIP prints + a print-vs-projection delta. The whole
+    point of the wedge: an analyst reading RBI's latest projection should
+    see real prints right next to it, with the surprise computed for free.
+    """
+    summary = macro_print_summary()
+    if not summary["available"]:
+        return
+
+    cpi = summary.get("cpi") or {}
+    iip = summary.get("iip") or {}
+
+    cpi_yoy = cpi.get("headline_yoy")
+    iip_yoy = iip.get("headline_yoy")
+    cpi_proj = (latest_decision or {}).get("cpi_projection_curr_value")
+    cpi_proj_fy = (latest_decision or {}).get("cpi_projection_curr_fy")
+
+    cols = st.columns([1.4, 1.4, 1.4, 2])
+    if cpi_yoy is not None:
+        cols[0].metric(
+            "Latest CPI",
+            f"{cpi_yoy:.2f}%",
+            cpi.get("reference_month"),
+            delta_color="off",
+        )
+    if cpi_proj is not None and cpi_yoy is not None:
+        delta = cpi_yoy - cpi_proj
+        cols[1].metric(
+            f"vs RBI projection ({cpi_proj_fy})",
+            f"{cpi_proj:.2f}%",
+            f"{delta:+.2f}pp",
+            delta_color="off",
+        )
+    if iip_yoy is not None:
+        cols[2].metric(
+            "Latest IIP",
+            f"{iip_yoy:.1f}%",
+            iip.get("reference_month"),
+            delta_color="off",
+        )
+    with cols[3]:
+        st.caption(
+            "Real-time CPI / IIP from the macro-pulse companion app. "
+            "[Open macro-pulse ↗](https://india-macro-pulse.streamlit.app)"
+        )
 
 
 # ─── What Changed tab ────────────────────────────────────────────────────────
