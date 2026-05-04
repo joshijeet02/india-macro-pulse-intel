@@ -250,6 +250,100 @@ class DocumentStore:
 CommunicationStore = DocumentStore
 
 
+class MPCDecisionStore:
+    """Time-series store of structured MPC decisions (one row per meeting)."""
+
+    def upsert(self, record: dict) -> None:
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO mpc_decisions (
+                    meeting_date, doc_id, repo_rate, repo_rate_change_bps,
+                    vote_for, vote_against, stance_label, stance_phrase,
+                    cpi_projection_curr_fy, cpi_projection_curr_value,
+                    gdp_projection_curr_fy, gdp_projection_curr_value,
+                    dissenting_members
+                ) VALUES (
+                    :meeting_date, :doc_id, :repo_rate, :repo_rate_change_bps,
+                    :vote_for, :vote_against, :stance_label, :stance_phrase,
+                    :cpi_projection_curr_fy, :cpi_projection_curr_value,
+                    :gdp_projection_curr_fy, :gdp_projection_curr_value,
+                    :dissenting_members
+                )
+                ON CONFLICT(meeting_date) DO UPDATE SET
+                    doc_id = excluded.doc_id,
+                    repo_rate = excluded.repo_rate,
+                    repo_rate_change_bps = excluded.repo_rate_change_bps,
+                    vote_for = excluded.vote_for,
+                    vote_against = excluded.vote_against,
+                    stance_label = excluded.stance_label,
+                    stance_phrase = excluded.stance_phrase,
+                    cpi_projection_curr_fy = excluded.cpi_projection_curr_fy,
+                    cpi_projection_curr_value = excluded.cpi_projection_curr_value,
+                    gdp_projection_curr_fy = excluded.gdp_projection_curr_fy,
+                    gdp_projection_curr_value = excluded.gdp_projection_curr_value,
+                    dissenting_members = excluded.dissenting_members
+                """,
+                {
+                    "meeting_date":             record["meeting_date"],
+                    "doc_id":                   record["doc_id"],
+                    "repo_rate":                record["repo_rate"],
+                    "repo_rate_change_bps":     record.get("repo_rate_change_bps", 0) or 0,
+                    "vote_for":                 record.get("vote_for"),
+                    "vote_against":             record.get("vote_against"),
+                    "stance_label":             record.get("stance_label") or "neutral",
+                    "stance_phrase":            record.get("stance_phrase"),
+                    "cpi_projection_curr_fy":   record.get("cpi_projection_curr_fy"),
+                    "cpi_projection_curr_value": record.get("cpi_projection_curr_value"),
+                    "gdp_projection_curr_fy":   record.get("gdp_projection_curr_fy"),
+                    "gdp_projection_curr_value": record.get("gdp_projection_curr_value"),
+                    "dissenting_members":       record.get("dissenting_members"),
+                },
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_history(self, limit: int = 24) -> list[dict]:
+        """Return decisions in chronological order (oldest first), most recent N."""
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM mpc_decisions ORDER BY meeting_date DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return list(reversed([dict(r) for r in rows]))
+        finally:
+            conn.close()
+
+    def get_latest(self) -> Optional[dict]:
+        history = self.get_history(limit=1)
+        return history[-1] if history else None
+
+    def get_previous(self, meeting_date: str) -> Optional[dict]:
+        conn = _connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT * FROM mpc_decisions
+                WHERE meeting_date < ?
+                ORDER BY meeting_date DESC LIMIT 1
+                """,
+                (meeting_date,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def count(self) -> int:
+        conn = _connect()
+        try:
+            return conn.execute("SELECT COUNT(*) FROM mpc_decisions").fetchone()[0]
+        finally:
+            conn.close()
+
+
 class BriefStore:
     def save(self, doc_id: str, brief_text: str, model: str | None = None):
         conn = _connect()

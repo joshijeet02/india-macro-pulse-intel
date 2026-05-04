@@ -89,6 +89,27 @@ CREATE TABLE IF NOT EXISTS auto_briefs (
     brief_text TEXT,
     generated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Time-series of structured MPC decisions for the analyst-facing chart layer.
+-- One row per MPC meeting; populated from documents.full_text via
+-- engine.mpc_extractor.
+CREATE TABLE IF NOT EXISTS mpc_decisions (
+    meeting_date         TEXT PRIMARY KEY,
+    doc_id               TEXT NOT NULL,
+    repo_rate            REAL NOT NULL,
+    repo_rate_change_bps INTEGER NOT NULL DEFAULT 0,
+    vote_for             INTEGER,
+    vote_against         INTEGER,
+    stance_label         TEXT NOT NULL DEFAULT 'neutral',
+    stance_phrase        TEXT,
+    cpi_projection_curr_fy    TEXT,
+    cpi_projection_curr_value REAL,
+    gdp_projection_curr_fy    TEXT,
+    gdp_projection_curr_value REAL,
+    dissenting_members   TEXT,  -- JSON array, populated from Minutes (P1)
+    created_at           TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (doc_id) REFERENCES documents(doc_id)
+);
 """
 
 

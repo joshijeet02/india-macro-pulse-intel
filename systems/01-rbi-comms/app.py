@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from db.schema import init_db
 from db.store import CommunicationStore
-from seed.sample_data import seed
-from ui.overview_view import render_overview
+from seed.historical_data import seed
+from ui.mpc_view import render_mpc_view
 
 
 st.set_page_config(
@@ -46,8 +46,9 @@ if CommunicationStore().count() == 0:
 
 st.title("RBI Communication Intelligence")
 st.caption(
-    "Track RBI policy communication, infer hawkish-dovish tone, and convert speeches, statements, "
-    "and minutes into an analyst-ready policy read."
+    "MPC-day workbench for India rates analysts. Real Governor's Statements, "
+    "structured stance scoring, statement diffs, and projection time series — "
+    "with one-click AI brief generation."
 )
 
-render_overview()
+render_mpc_view()
