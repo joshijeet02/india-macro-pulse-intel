@@ -825,6 +825,7 @@ def _render_brief(latest_doc: dict) -> None:
             except Exception as exc:
                 st.error(f"Brief generation failed: {exc}")
                 return
-            briefs.save(latest_doc["doc_id"], brief_text, model="claude-opus-4-7")
+            from ai.brief import MODEL as _BRIEF_MODEL
+            briefs.save(latest_doc["doc_id"], brief_text, model=_BRIEF_MODEL)
             st.success("Brief generated and saved.")
             st.write(brief_text)

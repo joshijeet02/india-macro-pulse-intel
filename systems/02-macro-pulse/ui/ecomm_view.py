@@ -85,8 +85,25 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
             try:
                 results = run_scrape_and_store(platforms=["amazon"])
                 for platform, idx in results.items():
-                    if "error" in idx:
-                        msgs.append(("error", f"**{platform.title()}:** {idx['error']}"))
+                    err = idx.get("error")
+                    if err:
+                        # Distinguish "Amazon blocked us" from other failures so
+                        # the user gets actionable guidance, not generic noise.
+                        if "0 items" in err or "blocking" in err.lower():
+                            msgs.append((
+                                "warning",
+                                f"**{platform.title()} returned no results.** "
+                                f"This usually means Amazon's anti-bot detection blocked "
+                                f"the scrape from this IP — common on shared cloud hosts.\n\n"
+                                f"**What to try:**\n"
+                                f"- Click **Run Price Scrape** again in a few minutes (sometimes works on retry)\n"
+                                f"- Or run the scraper from your laptop: "
+                                f"`python systems/02-macro-pulse/scripts/scrape_amazon.py`\n"
+                                f"  (results commit to `data/amazon_prices.json` and persist for everyone)\n\n"
+                                f"_Underlying: {err}_"
+                            ))
+                        else:
+                            msgs.append(("error", f"**{platform.title()}:** {err}"))
                     elif idx.get("index_value"):
                         msgs.append(("success",
                             f"**{platform.title()}:** {idx['items_count']} items scraped · "
@@ -95,7 +112,12 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
                     else:
                         msgs.append(("warning", f"**{platform.title()}:** scrape ran but index could not be computed"))
             except Exception as exc:
-                msgs.append(("error", f"Scrape failed: {exc}"))
+                msgs.append((
+                    "error",
+                    f"Scrape failed unexpectedly: {exc}\n\n"
+                    "If this persists, run `python scripts/scrape_amazon.py` locally and "
+                    "commit the resulting `data/amazon_prices.json`."
+                ))
         st.session_state["scrape_msg"] = msgs
         st.rerun()
 

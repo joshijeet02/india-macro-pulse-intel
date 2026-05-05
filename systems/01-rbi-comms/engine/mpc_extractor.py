@@ -140,6 +140,17 @@ _VOTE_PATTERNS = [
     ),
 ]
 
+# "All six members voted ..." / "all five members of the MPC ..." — used to
+# detect the actual quorum size when a unanimity pattern fires (handles the
+# vacancy case where the MPC was meeting with 5 members instead of 6).
+_QUORUM_NUMBER_WORDS = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+}
+_QUORUM_PATTERN = re.compile(
+    r"all\s+(?P<count>\d+|two|three|four|five|six|seven)\s+members?",
+    re.IGNORECASE,
+)
+
 
 def extract_vote_split(text: str) -> tuple[Optional[int], Optional[int]]:
     """Return (for, against). Both 6,0 if unanimous; both None if not found."""
@@ -157,12 +168,31 @@ def extract_vote_split(text: str) -> tuple[Optional[int], Optional[int]]:
         if 0 <= f <= MPC_MEMBERS and 0 <= a <= MPC_MEMBERS and (f + a) == MPC_MEMBERS:
             return f, a
 
-    # Unanimity patterns
+    # Unanimity patterns — try to parse the actual quorum count instead of
+    # defaulting to 6, so a 5-member meeting (vacancy) is recorded as 5-0.
     for pat in _VOTE_PATTERNS[2:]:
         if pat.search(text):
-            return MPC_MEMBERS, 0
+            return _parse_quorum_count(text), 0
 
     return None, None
+
+
+def _parse_quorum_count(text: str) -> int:
+    """
+    Extract the actual member count from phrases like "all six members" /
+    "all five members of the MPC". Falls back to MPC_MEMBERS (6) when not
+    found — preserves prior behavior on documents that don't state the count.
+    """
+    m = _QUORUM_PATTERN.search(text)
+    if not m:
+        return MPC_MEMBERS
+    raw = m.group("count").lower()
+    if raw.isdigit():
+        n = int(raw)
+    else:
+        n = _QUORUM_NUMBER_WORDS.get(raw, MPC_MEMBERS)
+    # Sanity bound — RBI's MPC has historically been 5-7
+    return n if 3 <= n <= 9 else MPC_MEMBERS
 
 
 # ─── Stance phrase ───────────────────────────────────────────────────────────

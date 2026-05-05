@@ -61,10 +61,21 @@ def latest_mpc_decision() -> Optional[dict]:
         log.warning(f"rbi-comms sidecar unreadable: {exc}")
         return None
 
-    docs = data.get("documents") or []
+    # Defensive: if the sidecar's shape is unexpected (e.g., a hand-edit
+    # broke it, or a future version changes the schema), fail soft instead
+    # of crashing the macro-pulse UI on an AttributeError.
+    if not isinstance(data, dict):
+        log.warning(f"rbi-comms sidecar root is {type(data).__name__}, expected dict")
+        return None
+    docs = data.get("documents")
+    if not isinstance(docs, list):
+        return None
+
     statements = [
         d for d in docs
-        if d.get("kind") == "mpc_statement" and d.get("decision")
+        if isinstance(d, dict)
+        and d.get("kind") == "mpc_statement"
+        and isinstance(d.get("decision"), dict)
     ]
     if not statements:
         return None

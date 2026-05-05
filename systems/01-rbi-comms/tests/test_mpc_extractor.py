@@ -61,6 +61,37 @@ def test_extract_vote_split_must_sum_to_six():
     assert f is None and a is None
 
 
+def test_unanimous_with_explicit_six_members():
+    text = "All six members of the MPC voted unanimously to keep the rate unchanged."
+    f, a = extract_vote_split(text)
+    assert f == 6 and a == 0
+
+
+def test_unanimous_with_five_member_quorum():
+    """Vacancy case — five-member meeting should NOT be recorded as 6-0."""
+    text = (
+        "All five members of the MPC voted unanimously to keep the policy "
+        "repo rate unchanged at 6.50 per cent."
+    )
+    f, a = extract_vote_split(text)
+    assert f == 5 and a == 0
+
+
+def test_unanimous_no_count_falls_back_to_six():
+    """Plain 'unanimously' without a count should fall back to the statutory 6."""
+    text = "The MPC voted unanimously to keep rates on hold."
+    f, a = extract_vote_split(text)
+    assert f == 6 and a == 0
+
+
+def test_unanimous_with_word_count():
+    """Some statements use number words — 'all four members'."""
+    text = "All four members voted unanimously in favour."
+    f, a = extract_vote_split(text)
+    # 4 is below the sanity floor (3) but within bounds — accept
+    assert f == 4 and a == 0
+
+
 def test_extract_stance_neutral():
     text = "The MPC also decided to continue with the neutral stance"
     label, phrase = extract_stance(text)

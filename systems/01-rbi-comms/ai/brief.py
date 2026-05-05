@@ -20,6 +20,14 @@ import os
 
 import anthropic
 
+# Single source of truth for the Anthropic model. Sonnet 4.6 is the default
+# — both the brief generator and the Q&A driver run on highly structured
+# prompts where the heavy lifting is in the retrieval/extraction layer,
+# not in the LLM. Sonnet handles them comfortably at a fraction of Opus's
+# cost. Switch to OPUS_MODEL only for genuinely hard reasoning workloads.
+MODEL = "claude-sonnet-4-6"
+OPUS_MODEL = "claude-opus-4-7"  # available for opt-in if a feature truly needs it
+
 
 _SYSTEM_PROMPT = (
     "You are a senior India macro economist writing a post-MPC communication "
@@ -120,7 +128,7 @@ def generate_communication_brief(document: dict) -> str:
     )
 
     message = _client().messages.create(
-        model="claude-opus-4-7",
+        model=MODEL,
         max_tokens=700,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
@@ -222,7 +230,7 @@ def _answer_query_impl(question: str, rows: list[dict], system_prompt: str,
 
     try:
         message = client.messages.create(
-            model="claude-opus-4-7",
+            model=MODEL,
             max_tokens=700,
             system=system_prompt,
             messages=[{"role": "user", "content": _build_query_prompt(question, context)}],

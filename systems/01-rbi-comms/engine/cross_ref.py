@@ -75,7 +75,14 @@ def _latest_indicator(indicator: str) -> Optional[dict]:
         except (OSError, json.JSONDecodeError) as exc:
             log.warning(f"macro-pulse {indicator} sidecar unreadable: {exc}")
             data = {}
-        entries = data.get(indicator) or []
+        # Defensive: hand-edits or future schema changes shouldn't crash us
+        if not isinstance(data, dict):
+            log.warning(f"macro-pulse sidecar root is {type(data).__name__}")
+            data = {}
+        raw = data.get(indicator)
+        entries = raw if isinstance(raw, list) else []
+        # Drop entries that aren't dicts or that miss reference_month
+        entries = [e for e in entries if isinstance(e, dict) and e.get("reference_month")]
         latest = _pick_latest(entries, key="reference_month")
         if latest is not None:
             return latest
