@@ -649,17 +649,17 @@ def _render_glossary_tab() -> None:
     # Two-column card grid
     cols = st.columns(2)
     entries = [
-        (term, defn) for term, defn in GLOSSARY.items()
+        (term, icon, defn) for term, (icon, defn) in GLOSSARY.items()
         if not search
         or search.lower() in term.lower()
         or search.lower() in defn.lower()
     ]
-    for i, (term, defn) in enumerate(entries):
+    for i, (term, icon, defn) in enumerate(entries):
         with cols[i % 2]:
             st.markdown(
                 f"""
 <div class="glossary-card">
-    <div class="glossary-term">{term}</div>
+    <div class="glossary-term">{icon} {term}</div>
     <div class="glossary-def">{defn}</div>
 </div>
                 """,

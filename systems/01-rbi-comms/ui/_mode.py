@@ -66,8 +66,8 @@ def render_glossary_expander(terms: list[str], context_label: str = "this sectio
     if not rows:
         return
     with st.expander(f"📖 What do these terms mean? ({len(rows)})"):
-        for term, definition in rows:
-            st.markdown(f"**{term}** — {definition}")
+        for term, (icon, definition) in rows:
+            st.markdown(f"{icon} **{term}** — {definition}")
 
 
 def glossary_tooltip(term: str, label: str | None = None) -> str:
