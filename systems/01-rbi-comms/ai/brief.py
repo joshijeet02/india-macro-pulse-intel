@@ -2,13 +2,17 @@
 AI brief generator for RBI communications.
 
 Hardened per PRD risk R4 (LLM hallucination of vote split / quotes):
-  * temperature = 0 for determinism
   * Strict system prompt: only use facts in the supplied STRUCTURED SIGNALS
     block; if a signal is missing, say so rather than invent
   * Quote attribution required: any direct quote must reference paragraph
     number from the supplied text
   * "DRAFT — verify before publishing" disclaimer in the rendered brief
     (rendered in the UI; this module just produces clean copy)
+
+Note: `temperature` is NOT set — Anthropic deprecated it for the Claude 4.x
+extended-thinking models. Determinism comes from the strict prompt structure
+plus the visible draft-verify disclaimer in the UI, not from a sampling
+temperature parameter.
 """
 from __future__ import annotations
 
@@ -118,7 +122,6 @@ def generate_communication_brief(document: dict) -> str:
     message = _client().messages.create(
         model="claude-opus-4-7",
         max_tokens=700,
-        temperature=0,            # determinism — same input → same output
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -221,7 +224,6 @@ def _answer_query_impl(question: str, rows: list[dict], system_prompt: str,
         message = client.messages.create(
             model="claude-opus-4-7",
             max_tokens=700,
-            temperature=0,
             system=system_prompt,
             messages=[{"role": "user", "content": _build_query_prompt(question, context)}],
         )
