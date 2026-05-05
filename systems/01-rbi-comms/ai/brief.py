@@ -138,3 +138,104 @@ def _fmt_proj(value, fy) -> str:
     if value is None:
         return "—"
     return f"{float(value):.1f}% for {fy}" if fy else f"{float(value):.1f}%"
+
+
+# ─── Query mode: NL Q&A over the corpus ──────────────────────────────────────
+
+_QUERY_SYSTEM_ANALYST = (
+    "You are a senior India economist answering an analyst's question about "
+    "RBI communications. Use ONLY the cited context passages provided. "
+    "Every factual claim must cite the chunk ID it came from in square "
+    "brackets, e.g. '[rbi-pr-62515::3]'. If the passages don't actually "
+    "answer the question, say so plainly — do not extrapolate."
+)
+
+_QUERY_SYSTEM_LAYMAN = (
+    "You are a friendly guide explaining RBI policy to someone with no "
+    "economics background. Use ONLY the supplied context passages — never "
+    "invent dates, numbers, or quotes.\n\n"
+    "Avoid jargon. Never use words like 'hawkish', 'basis points', or "
+    "'transmission' without immediately explaining them in plain words. "
+    "Focus on what the RBI's decisions mean for everyday people — home "
+    "loan EMIs, grocery prices, savings rates, jobs.\n\n"
+    "Write in short, simple paragraphs. Be warm, clear, and direct. Cite "
+    "the source document title and date (not the chunk ID — readers don't "
+    "care about IDs)."
+)
+
+
+def _build_query_prompt(question: str, context_window: str) -> str:
+    return (
+        f"Question:\n{question}\n\n"
+        f"Cited context (use only this):\n{context_window}\n"
+    )
+
+
+def _fallback_cited_answer(question: str, rows: list[dict]) -> str:
+    """No-API fallback: stitch the top 3 first-sentence snippets with citations."""
+    del question
+    if not rows:
+        return "I couldn't find passages that match your question in the corpus."
+    parts = ["Relevant RBI passages point to the following pattern:"]
+    for row in rows[:3]:
+        snippet = row["text"].strip().split(". ")[0].strip()
+        if not snippet.endswith("."):
+            snippet = f"{snippet}."
+        parts.append(f"{snippet} [{row['chunk_id']}]")
+    return "\n\n".join(parts)
+
+
+def _fallback_layman_answer(question: str, rows: list[dict]) -> str:
+    """No-API fallback for layman mode."""
+    del question
+    if not rows:
+        return "I couldn't find anything in the recent RBI documents that matches your question."
+    lines = ["Based on recent RBI documents, here's what we found:\n"]
+    for row in rows[:3]:
+        snippet = row["text"].strip().split(". ")[0].strip()
+        if not snippet.endswith("."):
+            snippet = f"{snippet}."
+        date = row.get("published_at", "")
+        title = row.get("title", "RBI Document")[:80]
+        lines.append(f"📄 *{title}* ({date}): {snippet}")
+    lines.append(
+        "\n*Note: Set ANTHROPIC_API_KEY in Streamlit secrets for a full "
+        "plain-English summary.*"
+    )
+    return "\n\n".join(lines)
+
+
+def _answer_query_impl(question: str, rows: list[dict], system_prompt: str,
+                       fallback_fn) -> str:
+    """Shared LLM Q&A driver for analyst + layman modes."""
+    if not rows:
+        return fallback_fn(question, rows)
+    from engine.retrieval import build_context_window
+    context = build_context_window(rows)
+    try:
+        client = _client()
+    except EnvironmentError:
+        return fallback_fn(question, rows)
+
+    try:
+        message = client.messages.create(
+            model="claude-opus-4-7",
+            max_tokens=700,
+            temperature=0,
+            system=system_prompt,
+            messages=[{"role": "user", "content": _build_query_prompt(question, context)}],
+        )
+        return message.content[0].text
+    except Exception as exc:
+        # Network / API error — degrade gracefully so the UI doesn't crash
+        return f"{fallback_fn(question, rows)}\n\n_(LLM unavailable: {exc})_"
+
+
+def answer_query(question: str, rows: list[dict]) -> str:
+    """Analyst-mode Q&A: cited, terse, no jargon-defining."""
+    return _answer_query_impl(question, rows, _QUERY_SYSTEM_ANALYST, _fallback_cited_answer)
+
+
+def answer_query_layman(question: str, rows: list[dict]) -> str:
+    """Layman-mode Q&A: jargon-free, focused on real-world impact."""
+    return _answer_query_impl(question, rows, _QUERY_SYSTEM_LAYMAN, _fallback_layman_answer)

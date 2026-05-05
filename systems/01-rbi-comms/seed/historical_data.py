@@ -17,7 +17,8 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
-from db.store import CommunicationStore, MemberViewStore, MPCDecisionStore
+from db.store import ChunkStore, CommunicationStore, MemberViewStore, MPCDecisionStore
+from engine.chunker import chunk_document
 from engine.minutes_extractor import analyze_minutes
 from engine.mpc_extractor import extract_mpc_decision
 from engine.stance_engine import analyze_communication
@@ -107,6 +108,10 @@ def _seed_one(entry: dict) -> tuple[bool, str]:
     }
 
     CommunicationStore().upsert(document)
+
+    # Chunk the full text and index for FTS5 retrieval (powers Query mode).
+    chunks = chunk_document(doc_id, full_text, max_chars=1400)
+    ChunkStore().insert_chunks(chunks)
 
     # Persist the structured mpc_decisions row only if we got a real repo rate.
     if entry["kind"] == "mpc_statement" and decision.get("repo_rate") is not None:

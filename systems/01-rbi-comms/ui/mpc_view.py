@@ -15,11 +15,15 @@ import os
 import pandas as pd
 import streamlit as st
 
-from ai.brief import generate_communication_brief
-from db.store import BriefStore, CommunicationStore, MemberViewStore, MPCDecisionStore
+from ai.brief import answer_query, answer_query_layman, generate_communication_brief
+from db.store import (
+    BriefStore, CommunicationStore, DocumentStore,
+    MemberViewStore, MPCDecisionStore,
+)
 from engine.archetype import classify_statement, find_most_similar_meeting
 from engine.cross_ref import macro_print_summary
 from engine.diff_engine import diff_documents, summarize_diff
+from engine.focus_terms import detect_new_focus_terms
 from engine.plain_summary import render_plain_summary
 from engine.stance_engine import analyze_communication
 from ui._mode import is_plain, render_glossary_expander
@@ -68,9 +72,13 @@ def render_mpc_view() -> None:
     st.divider()
 
     # ─── Tabs ──────────────────────────────────────────────────────────────
-    tab_changed, tab_proj, tab_series, tab_members, tab_speeches, tab_feed, tab_brief = st.tabs([
-        "What Changed", "Projections", "Stance Time Series",
+    (
+        tab_changed, tab_ask, tab_proj, tab_series, tab_members,
+        tab_speeches, tab_feed, tab_brief, tab_glossary,
+    ) = st.tabs([
+        "What Changed", "Ask the Data", "Projections", "Stance Time Series",
         "Member Views", "Recent Speeches", "Document Feed", "AI Brief",
+        "Glossary",
     ])
 
     prior_doc = (
@@ -80,6 +88,9 @@ def render_mpc_view() -> None:
 
     with tab_changed:
         _render_what_changed(latest_doc, prior_doc)
+
+    with tab_ask:
+        _render_ask_the_data()
 
     with tab_proj:
         _render_projections(decisions.get_history(limit=12))
@@ -98,6 +109,9 @@ def render_mpc_view() -> None:
 
     with tab_brief:
         _render_brief(latest_doc)
+
+    with tab_glossary:
+        _render_glossary_tab()
 
 
 # ─── Hero card ────────────────────────────────────────────────────────────────
@@ -290,6 +304,29 @@ def _render_what_changed(latest_doc: dict, prior_doc: dict | None) -> None:
         if summary["phrases_removed"]:
             st.warning("**Dropped:** " + ", ".join(f"`{p}`" for p in summary["phrases_removed"][:10]))
 
+    # Theme-drift watchlist: which macro topics are NEW this MPC
+    focus = detect_new_focus_terms(
+        latest_doc.get("full_text", ""),
+        prior_doc.get("full_text", ""),
+    )
+    if focus["new"] or focus["dropped"]:
+        st.markdown("##### Macro theme drift (watchlist)")
+        cols = st.columns(2)
+        if focus["new"]:
+            cols[0].markdown(
+                "**New themes this MPC:** "
+                + ", ".join(f"`{t}`" for t in focus["new"])
+            )
+        if focus["dropped"]:
+            cols[1].markdown(
+                "**Dropped from prior MPC:** "
+                + ", ".join(f"`{t}`" for t in focus["dropped"])
+            )
+        st.caption(
+            "13-term watchlist tracking food/transmission/monsoon/global etc. "
+            "What RBI stops talking about is often as informative as what it adds."
+        )
+
     # Per-paragraph diff
     st.markdown(f"**Comparing** {prior_doc['published_at']} → {latest_doc['published_at']}")
     if not diffs:
@@ -433,6 +470,226 @@ def _render_member_views(latest_decision: dict | None) -> None:
             "One row per MPC member, one column per meeting. Blanks indicate "
             "either the member wasn't on the committee or their statement "
             "didn't trigger any stance phrase."
+        )
+
+
+# ─── Ask the Data tab (NL Q&A over the corpus) ──────────────────────────────
+
+_SUGGESTED_QUESTIONS_ANALYST = [
+    "How has the MPC described transmission lags since February 2025?",
+    "When did food inflation language first soften in the cycle?",
+    "What is the latest RBI view on the monsoon and rural demand?",
+    "Has the stance language changed in the last three meetings?",
+    "What did Dr. Nagesh Kumar say about growth at the April 2026 MPC?",
+    "Which dissents have appeared in the past year of MPC votes?",
+]
+
+_SUGGESTED_QUESTIONS_LAYMAN = [
+    "Will my home loan EMI go up?",
+    "Is the RBI worried about rising food prices?",
+    "How has the RBI's stance changed over the last year?",
+    "Is the RBI trying to control inflation or support growth?",
+    "What does the latest MPC meeting say about interest rates?",
+    "Are interest rates likely to be cut soon?",
+]
+
+
+def _render_ask_the_data() -> None:
+    """
+    Natural-language Q&A over the indexed RBI corpus.
+
+    Uses FTS5 retrieval with intent-keyword expansion (so lay phrases like
+    "EMI" still hit the index by mapping to "repo / transmission / lending"),
+    feeds top chunks to the LLM with strict citation requirements, and shows
+    the source passages below the answer.
+    """
+    layman = is_plain()
+
+    if layman:
+        st.subheader("💬 Ask the RBI Anything")
+        st.caption(
+            "Type your question in plain English — no economics degree needed. "
+            "We'll search through official RBI documents and explain what they say."
+        )
+        suggestions = _SUGGESTED_QUESTIONS_LAYMAN
+        placeholder = "e.g. Will my home loan EMI go up? Is the RBI worried about prices?"
+    else:
+        st.subheader("Query the RBI corpus")
+        st.caption(
+            "Ask about growth, inflation, liquidity, forward guidance, or how "
+            "RBI language has evolved across meetings. Cited answers."
+        )
+        suggestions = _SUGGESTED_QUESTIONS_ANALYST
+        placeholder = "How has the MPC described transmission lags since February 2025?"
+
+    # Suggested questions as a 3-col grid
+    st.markdown("**💡 Try one of these:**")
+    cols = st.columns(3)
+    clicked: str | None = None
+    for i, q in enumerate(suggestions):
+        with cols[i % 3]:
+            if st.button(q, key=f"sq_{i}_{int(layman)}", use_container_width=True):
+                clicked = q
+
+    question = st.text_input(
+        "Your question" if layman else "Ask about RBI communications",
+        value=clicked or "",
+        placeholder=placeholder,
+        key="query_input",
+    )
+    if not question:
+        st.info(
+            "Ask anything about the RBI — about rates, prices, growth, or policy changes."
+            if layman else
+            "Try a question about inflation, liquidity stance, or changes in forward guidance."
+        )
+        return
+
+    docs = DocumentStore()
+    with st.spinner("Searching RBI documents…"):
+        rows = docs.search(question, limit=8)
+
+        # Smart fallback: if FTS returns nothing, fall back to recent doc summaries
+        if not rows:
+            fallback_docs = docs.list_recent(limit=12)
+            if fallback_docs:
+                st.warning(
+                    "No passages exactly matched — drawing from recent meeting "
+                    "summaries instead."
+                )
+                rows = [
+                    {
+                        "chunk_id":     d["doc_id"],
+                        "title":        d["title"],
+                        "published_at": d["published_at"],
+                        "text":         d.get("summary") or (d.get("full_text", "") or "")[:600],
+                    }
+                    for d in fallback_docs
+                    if d.get("summary") or d.get("full_text")
+                ]
+
+    if not rows:
+        st.error("No RBI documents found in the corpus.")
+        return
+
+    st.markdown("---")
+    st.markdown(
+        "### 🗣️ Plain-English Answer" if layman else "**Synthesised Answer**"
+    )
+    answer = (answer_query_layman if layman else answer_query)(question, rows)
+    st.write(answer)
+
+    st.markdown("---")
+    st.markdown(
+        "#### 📄 Where this came from"
+        if layman else
+        "**Supporting Passages**"
+    )
+    if layman:
+        st.caption("These are the actual RBI document excerpts we used to answer your question.")
+    df = pd.DataFrame(rows)
+    if layman:
+        df = df.rename(columns={
+            "title": "Document", "published_at": "Date", "text": "RBI Passage",
+        })
+        cols_to_show = [c for c in ("Document", "Date", "RBI Passage") if c in df.columns]
+    else:
+        cols_to_show = [c for c in ("chunk_id", "title", "published_at", "text") if c in df.columns]
+    st.dataframe(df[cols_to_show], use_container_width=True, hide_index=True)
+
+
+# ─── Glossary tab (visual cards + 'How does RBI affect me?') ─────────────────
+
+def _render_glossary_tab() -> None:
+    """
+    Polished glossary view: searchable card grid + three real-world impact
+    panels grounding the abstractions in everyday consequences.
+    """
+    from engine.glossary import GLOSSARY
+
+    st.subheader("📖 RBI Jargon, Decoded")
+    st.caption(
+        "New to central-bank speak? This glossary translates key RBI terms "
+        "into plain English. Search to filter; click through any to read more."
+    )
+
+    # Card CSS — works in both light and dark theme
+    st.markdown(
+        """
+<style>
+.glossary-card {
+    background: linear-gradient(135deg, #1a1f2e 0%, #16213e 100%);
+    border: 1px solid #2d3561;
+    border-radius: 12px;
+    padding: 1.1rem 1.4rem;
+    margin-bottom: 0.8rem;
+}
+.glossary-term {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #7eb8f7;
+    margin-bottom: 0.3rem;
+}
+.glossary-def {
+    font-size: 0.92rem;
+    color: #c9d1e0;
+    line-height: 1.55;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    search = st.text_input(
+        "🔍 Filter terms",
+        placeholder="e.g. inflation, EMI, repo, stance...",
+        key="glossary_search",
+    )
+
+    # Two-column card grid
+    cols = st.columns(2)
+    entries = [
+        (term, defn) for term, defn in GLOSSARY.items()
+        if not search
+        or search.lower() in term.lower()
+        or search.lower() in defn.lower()
+    ]
+    for i, (term, defn) in enumerate(entries):
+        with cols[i % 2]:
+            st.markdown(
+                f"""
+<div class="glossary-card">
+    <div class="glossary-term">{term}</div>
+    <div class="glossary-def">{defn}</div>
+</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.divider()
+    st.markdown("### 🤔 How does the RBI actually affect me?")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.info(
+            "**Home Loan EMIs** 🏠\n\n"
+            "When the repo rate goes up by 0.25%, your EMI on a ₹50L home loan "
+            "rises roughly ₹750–₹900/month. A cut works the same in reverse — "
+            "but transmission to your bank typically takes 1-3 months."
+        )
+    with c2:
+        st.info(
+            "**Fixed Deposits** 🏦\n\n"
+            "A hawkish RBI is good for savers — banks raise FD rates when "
+            "borrowing costs rise. A dovish RBI cycle means slimmer FD returns; "
+            "if you're locking in a long-term deposit, time it accordingly."
+        )
+    with c3:
+        st.info(
+            "**Your Grocery Bill** 🛒\n\n"
+            "The RBI tracks food prices closely — they make up almost half of "
+            "the CPI basket. Persistent food inflation erodes purchasing power: "
+            "the same income buys less. This is what RBI's 'inflation targeting' "
+            "ultimately tries to protect."
         )
 
 

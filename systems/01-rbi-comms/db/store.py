@@ -250,6 +250,93 @@ class DocumentStore:
 CommunicationStore = DocumentStore
 
 
+class ChunkStore:
+    """
+    Persistence + FTS5-backed search over document chunks.
+
+    Each chunk is an indexable paragraph-sized slice of a document. Search
+    is via the FTS5 virtual table populated by triggers in db/schema.py.
+    """
+
+    def insert_chunks(self, chunks: list[dict]) -> int:
+        """Idempotent bulk insert. Returns number of new rows."""
+        if not chunks:
+            return 0
+        conn = _connect()
+        try:
+            inserted = 0
+            for c in chunks:
+                cur = conn.execute(
+                    """
+                    INSERT INTO document_chunks (
+                        chunk_id, doc_id, chunk_index, section_label, page_label,
+                        tokens_estimate, text, citations_json
+                    ) VALUES (
+                        :chunk_id, :doc_id, :chunk_index, :section_label, :page_label,
+                        :tokens_estimate, :text, :citations_json
+                    )
+                    ON CONFLICT(chunk_id) DO UPDATE SET
+                        text = excluded.text,
+                        tokens_estimate = excluded.tokens_estimate,
+                        citations_json = excluded.citations_json
+                    """,
+                    c,
+                )
+                inserted += cur.rowcount or 0
+            conn.commit()
+            return inserted
+        finally:
+            conn.close()
+
+    def search(self, fts_query: str, limit: int = 8) -> list[dict]:
+        """
+        FTS5 search. Returns chunks joined with their parent document for
+        title + published_at. Empty list if no FTS hits.
+        """
+        if not fts_query.strip():
+            return []
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT c.chunk_id, c.doc_id, c.text, c.chunk_index,
+                       d.title, d.published_at, d.document_type
+                FROM document_chunks_fts f
+                JOIN document_chunks c ON c.id = f.rowid
+                JOIN documents d ON d.doc_id = c.doc_id
+                WHERE document_chunks_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+                """,
+                (fts_query, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except sqlite3.OperationalError:
+            # Malformed FTS5 query (e.g., a single bare quote). Fail-soft
+            # and let the caller fall back to recent docs.
+            return []
+        finally:
+            conn.close()
+
+    def count(self) -> int:
+        conn = _connect()
+        try:
+            return conn.execute("SELECT COUNT(*) FROM document_chunks").fetchone()[0]
+        finally:
+            conn.close()
+
+
+# Convenience: expose search via DocumentStore so existing call sites just work
+def _document_store_search(self, query: str, limit: int = 8) -> list[dict]:
+    """Translate NL query → FTS5 OR-query, then search chunks."""
+    from engine.retrieval import prepare_search_query
+    fts_query = prepare_search_query(query)
+    return ChunkStore().search(fts_query, limit=limit)
+
+
+DocumentStore.search = _document_store_search
+
+
 class MemberViewStore:
     """Per-member stance reads from MPC Minutes."""
 
