@@ -90,6 +90,26 @@ CREATE TABLE IF NOT EXISTS auto_briefs (
     generated_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Per-member views from MPC Minutes — one row per (meeting, member).
+-- Populated from the Minutes document via engine.minutes_extractor.
+-- Reveals which members are persistent dissenters, who's hawkish vs
+-- dovish, etc. Useful both for the per-meeting member-table view and
+-- for the cross-meeting member-stance heatmap.
+CREATE TABLE IF NOT EXISTS mpc_member_views (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_date    TEXT NOT NULL,
+    member_name     TEXT NOT NULL,
+    honorific       TEXT,
+    vote            TEXT,        -- 'Yes' / 'No' / 'Abstain' / NULL if unparsed
+    stance_label    TEXT,
+    stance_score    REAL,
+    inflation_label TEXT,
+    growth_label    TEXT,
+    statement_excerpt TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    UNIQUE(meeting_date, member_name)
+);
+
 -- Time-series of structured MPC decisions for the analyst-facing chart layer.
 -- One row per MPC meeting; populated from documents.full_text via
 -- engine.mpc_extractor.

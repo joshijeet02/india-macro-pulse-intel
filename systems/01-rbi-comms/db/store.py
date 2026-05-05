@@ -250,6 +250,104 @@ class DocumentStore:
 CommunicationStore = DocumentStore
 
 
+class MemberViewStore:
+    """Per-member stance reads from MPC Minutes."""
+
+    def upsert_many(self, meeting_date: str, members: list[dict]) -> None:
+        if not members:
+            return
+        conn = _connect()
+        try:
+            for m in members:
+                conn.execute(
+                    """
+                    INSERT INTO mpc_member_views (
+                        meeting_date, member_name, honorific, vote,
+                        stance_label, stance_score, inflation_label, growth_label,
+                        statement_excerpt
+                    ) VALUES (
+                        :meeting_date, :member_name, :honorific, :vote,
+                        :stance_label, :stance_score, :inflation_label, :growth_label,
+                        :statement_excerpt
+                    )
+                    ON CONFLICT(meeting_date, member_name) DO UPDATE SET
+                        honorific = excluded.honorific,
+                        vote = excluded.vote,
+                        stance_label = excluded.stance_label,
+                        stance_score = excluded.stance_score,
+                        inflation_label = excluded.inflation_label,
+                        growth_label = excluded.growth_label,
+                        statement_excerpt = excluded.statement_excerpt
+                    """,
+                    {**m, "meeting_date": meeting_date},
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_for_meeting(self, meeting_date: str) -> list[dict]:
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT * FROM mpc_member_views
+                WHERE meeting_date = ?
+                ORDER BY id
+                """,
+                (meeting_date,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_history_for_member(self, member_name: str, limit: int = 24) -> list[dict]:
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT * FROM mpc_member_views
+                WHERE member_name = ?
+                ORDER BY meeting_date DESC LIMIT ?
+                """,
+                (member_name, limit),
+            ).fetchall()
+            return list(reversed([dict(r) for r in rows]))
+        finally:
+            conn.close()
+
+    def all_members_seen(self) -> list[str]:
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT member_name FROM mpc_member_views ORDER BY member_name"
+            ).fetchall()
+            return [r["member_name"] for r in rows]
+        finally:
+            conn.close()
+
+    def heatmap_data(self) -> list[dict]:
+        """All rows for cross-meeting heatmap rendering."""
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT meeting_date, member_name, vote, stance_label, stance_score
+                FROM mpc_member_views
+                ORDER BY meeting_date, member_name
+                """
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def count(self) -> int:
+        conn = _connect()
+        try:
+            return conn.execute("SELECT COUNT(*) FROM mpc_member_views").fetchone()[0]
+        finally:
+            conn.close()
+
+
 class MPCDecisionStore:
     """Time-series store of structured MPC decisions (one row per meeting)."""
 

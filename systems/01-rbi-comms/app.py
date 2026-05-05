@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from db.schema import init_db
 from db.store import CommunicationStore
 from seed.historical_data import seed
+from ui._mode import render_mode_toggle
 from ui.mpc_view import render_mpc_view
 
 
@@ -43,6 +44,8 @@ st.markdown(
 init_db()
 if CommunicationStore().count() == 0:
     seed()
+
+render_mode_toggle()
 
 st.title("RBI Communication Intelligence")
 st.caption(

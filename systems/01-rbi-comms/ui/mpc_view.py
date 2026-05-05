@@ -16,10 +16,13 @@ import pandas as pd
 import streamlit as st
 
 from ai.brief import generate_communication_brief
-from db.store import BriefStore, CommunicationStore, MPCDecisionStore
+from db.store import BriefStore, CommunicationStore, MemberViewStore, MPCDecisionStore
+from engine.archetype import classify_statement, find_most_similar_meeting
 from engine.cross_ref import macro_print_summary
 from engine.diff_engine import diff_documents, summarize_diff
+from engine.plain_summary import render_plain_summary
 from engine.stance_engine import analyze_communication
+from ui._mode import is_plain, render_glossary_expander
 
 
 _STANCE_COLORS = {
@@ -49,15 +52,25 @@ def render_mpc_view() -> None:
     # ─── Hero ──────────────────────────────────────────────────────────────
     _render_hero(latest_doc, latest_decision, prior_decision)
 
+    # Statement archetype + nearest-historical-match
+    _render_archetype_badge(latest_decision, prior_decision, decisions.get_history(limit=24))
+
     # Cross-reference: latest CPI/IIP prints from macro-pulse
     _render_macro_callout(latest_decision)
+
+    # Always-available glossary so a non-economist reader can decode terms
+    render_glossary_expander([
+        "Repo Rate", "MPC", "MPC Vote", "Stance", "Withdrawal of accommodation",
+        "Neutral stance", "Accommodative", "Forward guidance", "Hawkish", "Dovish",
+        "Headline CPI", "RBI Target",
+    ])
 
     st.divider()
 
     # ─── Tabs ──────────────────────────────────────────────────────────────
-    tab_changed, tab_proj, tab_series, tab_feed, tab_brief = st.tabs([
+    tab_changed, tab_proj, tab_series, tab_members, tab_speeches, tab_feed, tab_brief = st.tabs([
         "What Changed", "Projections", "Stance Time Series",
-        "Document Feed", "AI Brief",
+        "Member Views", "Recent Speeches", "Document Feed", "AI Brief",
     ])
 
     prior_doc = (
@@ -73,6 +86,12 @@ def render_mpc_view() -> None:
 
     with tab_series:
         _render_time_series(decisions.get_history(limit=24))
+
+    with tab_members:
+        _render_member_views(latest_decision)
+
+    with tab_speeches:
+        _render_speech_feed()
 
     with tab_feed:
         _render_feed(docs)
@@ -142,6 +161,56 @@ def _format_change(bps: int) -> str | None:
     if bps == 0:
         return "unchanged"
     return f"+{bps}bp" if bps > 0 else f"{bps}bp"
+
+
+def _render_archetype_badge(
+    latest_decision: dict | None,
+    prior_decision: dict | None,
+    history: list[dict],
+) -> None:
+    """Show the statement archetype + 'reads most like ...' pattern match."""
+    if latest_decision is None:
+        return
+
+    archetype = classify_statement(latest_decision, prior_decision)
+    similar = find_most_similar_meeting(
+        archetype, history,
+        exclude_meeting_date=latest_decision.get("meeting_date"),
+    )
+
+    badge_color = {
+        "rate_cut":          "#388E3C",
+        "rate_hike":         "#D32F2F",
+        "pre_cut_signal":    "#1976D2",
+        "hawkish_pivot":     "#E65100",
+        "insurance_pause":   "#7B1FA2",
+        "operational_tweak": "#616161",
+    }.get(archetype.label, "#1976D2")
+
+    similar_phrase = (
+        f"Reads most like the **{similar['meeting_date']}** meeting "
+        f"(repo {similar['repo_rate']:.2f}%)."
+        if similar else
+        "Not enough historical data for a similar-meeting match yet."
+    )
+
+    st.markdown(
+        f"""
+<div style='background: {badge_color}11; border-left: 4px solid {badge_color};
+            padding: 12px 16px; border-radius: 4px; margin: 8px 0 16px 0;'>
+  <div style='font-size: 11px; color: {badge_color}; font-weight: 700;
+              letter-spacing: 0.6px; text-transform: uppercase;'>Archetype</div>
+  <div style='font-size: 18px; font-weight: 700; color: #1C1E21; margin-top: 4px;'>
+    {archetype.display}
+  </div>
+  <div style='font-size: 13px; color: #555; margin-top: 6px;'>
+    {archetype.rationale}
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.caption(similar_phrase)
 
 
 def _render_macro_callout(latest_decision: dict | None) -> None:
@@ -300,6 +369,119 @@ def _render_time_series(history: list[dict]) -> None:
 
 # ─── Document Feed tab ───────────────────────────────────────────────────────
 
+def _render_member_views(latest_decision: dict | None) -> None:
+    """
+    Per-member analysis from MPC Minutes — current meeting roster + a cross-
+    meeting heatmap so analysts can spot persistent dissenters and shifting
+    votes. Only the Minutes contain member-level data; the Statement is
+    Governor-only prose.
+    """
+    store = MemberViewStore()
+    if store.count() == 0:
+        st.info(
+            "Per-member views become available after MPC Minutes are ingested. "
+            "The Minutes are released ~2 weeks after each MPC meeting."
+        )
+        return
+
+    # Latest meeting member roster
+    if latest_decision and latest_decision.get("meeting_date"):
+        members = store.get_for_meeting(latest_decision["meeting_date"])
+    else:
+        members = []
+
+    if members:
+        st.subheader(f"Member views — {members[0].get('meeting_date', '')}")
+        rows = []
+        for m in members:
+            rows.append({
+                "Member": f"{m.get('honorific') or ''} {m['member_name']}".strip(),
+                "Vote":   m.get("vote") or "—",
+                "Stance": (m.get("stance_label") or "—").replace("_", " ").title(),
+                "Stance score": (
+                    f"{m['stance_score']:+.2f}" if m.get("stance_score") is not None else "—"
+                ),
+                "Inflation read": (m.get("inflation_label") or "—").replace("_", " ").title(),
+                "Growth read":    (m.get("growth_label") or "—").replace("_", " ").title(),
+            })
+        st.dataframe(
+            pd.DataFrame(rows), use_container_width=True, hide_index=True,
+        )
+
+        # Reveal individual statements (long-form audit)
+        with st.expander("Read individual member statements"):
+            for m in members:
+                st.markdown(f"**{m.get('honorific') or ''} {m['member_name']}**")
+                st.write(m.get("statement_excerpt") or "—")
+                st.divider()
+
+    # Cross-meeting heatmap — table form (Streamlit native chart heatmap is
+    # finicky; a styled dataframe is more readable for an analyst)
+    st.subheader("Member stance heatmap (across meetings)")
+    heatmap_rows = store.heatmap_data()
+    if heatmap_rows:
+        df = pd.DataFrame(heatmap_rows)
+        df["stance_pretty"] = df["stance_label"].fillna("—").str.replace("_", " ").str.title()
+        pivot = df.pivot_table(
+            index="member_name",
+            columns="meeting_date",
+            values="stance_pretty",
+            aggfunc="first",
+        ).fillna("—")
+        st.dataframe(pivot, use_container_width=True)
+        st.caption(
+            "One row per MPC member, one column per meeting. Blanks indicate "
+            "either the member wasn't on the committee or their statement "
+            "didn't trigger any stance phrase."
+        )
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_speech_listing() -> list[dict]:
+    """1-hour cache so we don't hammer RBI's RSS endpoint on every rerun."""
+    from scrapers.rbi_speech import fetch_speech_listing
+    return fetch_speech_listing()
+
+
+def _render_speech_feed() -> None:
+    """
+    Recent Governor + Deputy Governor speeches from RBI's RSS feed.
+    Inter-meeting tracking — surfaces language drift between MPCs.
+
+    Live RSS query (cached 1 hour). Full transcripts are linked, not
+    ingested in v1; ingestion is Phase 2.
+    """
+    st.subheader("Recent RBI speeches")
+    st.caption(
+        "Live from RBI's speeches feed (cached 1 hour). "
+        "Use these between MPC meetings to track whether the Governor or "
+        "Deputy Governors are leaning more hawkish or dovish than the "
+        "last formal Statement."
+    )
+
+    items = _cached_speech_listing()
+    if not items:
+        st.info(
+            "Could not fetch the RBI speeches RSS feed — try again later, "
+            "or visit [rbi.org.in/speeches](https://rbi.org.in/Scripts/BS_SpeechesView.aspx) directly."
+        )
+        return
+
+    for item in items[:10]:
+        with st.container(border=True):
+            left, right = st.columns([3, 1])
+            with left:
+                st.markdown(f"**{item['title'][:140]}**")
+                st.caption(item.get("pub_date") or "")
+            with right:
+                if item.get("link"):
+                    st.markdown(
+                        f"<a href='{item['link']}' target='_blank' "
+                        f"style='font-size:13px;'>Open ↗</a>",
+                        unsafe_allow_html=True,
+                    )
+
+
 def _render_feed(docs: CommunicationStore) -> None:
     st.subheader("Recent RBI Communications")
     for row in docs.list_recent(limit=12):
@@ -326,6 +508,19 @@ def _render_feed(docs: CommunicationStore) -> None:
 
 def _render_brief(latest_doc: dict) -> None:
     st.subheader(f"AI Brief: {latest_doc['title']}")
+
+    # In Plain English mode, render the deterministic lay-reader summary
+    # alongside the analyst-style brief. No LLM call, no API cost.
+    if is_plain():
+        decision = MPCDecisionStore().get_latest()
+        prior = (
+            MPCDecisionStore().get_previous(decision["meeting_date"])
+            if decision else None
+        )
+        if decision:
+            st.markdown("##### What this means, plainly")
+            st.info(render_plain_summary(decision, prior))
+
     st.warning(
         "**DRAFT — verify before publishing.** This brief is generated by an LLM "
         "from the structured signals; vote splits, repo rate, and other quantitative "

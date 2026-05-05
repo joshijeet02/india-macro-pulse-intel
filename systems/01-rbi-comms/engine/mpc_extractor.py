@@ -33,26 +33,38 @@ MPC_MEMBERS = 6  # statutory composition
 # ─── Repo rate ───────────────────────────────────────────────────────────────
 
 _REPO_PATTERNS = [
-    # "reduced/increased by N basis points to X.XX per cent" — change decisions
+    # "reduce/increase the policy repo rate ... by N basis points (bps) to X.XX per cent"
+    # — verb BEFORE "policy repo rate", with optional parentheticals "(LAF)" between
+    # "rate" and "by N basis points", and optional "(bps)" after the number.
+    re.compile(
+        r"(?P<dir>reduce|increase|cut|raise|reduced|increased|cut|raised|"
+        r"reducing|increasing|cutting|raising)"
+        r"\s+(?:the\s+)?policy\s+repo\s+rate\b[^.]{0,150}?"
+        r"by\s+(?P<bps>\d+)\s+basis\s+points?(?:\s*\(bps?\))?"
+        r"\s+to\s+(?P<rate>\d+(?:\.\d+)?)\s*per\s*cent",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    # "policy repo rate ... reduced/increased by N basis points to X.XX per cent"
+    # — verb AFTER "policy repo rate" (older RBI phrasing).
     re.compile(
         r"policy\s+repo\s+rate\s+(?:was\s+)?(?P<dir>reduced|increased|cut|raised)"
-        r"\s+by\s+(?P<bps>\d+)\s+basis\s+points?\s+to\s+(?P<rate>\d+(?:\.\d+)?)\s*per\s*cent",
+        r"\s+by\s+(?P<bps>\d+)\s+basis\s+points?(?:\s*\(bps?\))?"
+        r"\s+to\s+(?P<rate>\d+(?:\.\d+)?)\s*per\s*cent",
         re.IGNORECASE,
     ),
-    # Flexible "policy repo rate ... unchanged at X.XX per cent" — handles "(LAF)"
-    # and other parentheticals between the phrase and the rate.
+    # Flexible "policy repo rate ... unchanged at X.XX per cent"
     re.compile(
         r"policy\s+repo\s+rate\b[^.]{0,150}?unchanged\s+at\s+"
         r"(\d+(?:\.\d+)?)\s*per\s*cent",
         re.IGNORECASE | re.DOTALL,
     ),
-    # "keep the policy repo rate ... at X.XX per cent" — handles "decided to" prefix
+    # "keep the policy repo rate ... at X.XX per cent"
     re.compile(
         r"keep\s+the\s+policy\s+repo\s+rate\b[^.]{0,150}?at\s+"
         r"(\d+(?:\.\d+)?)\s*per\s*cent",
         re.IGNORECASE | re.DOTALL,
     ),
-    # Catch-all: "policy repo rate at X.XX per cent"
+    # Catch-all
     re.compile(
         r"policy\s+repo\s+rate\s+at\s+(\d+(?:\.\d+)?)\s*per\s*cent",
         re.IGNORECASE,
@@ -62,9 +74,9 @@ _REPO_PATTERNS = [
 # Lookup for changes in basis points (negative for cut)
 def _change_sign(direction: str) -> int:
     d = direction.lower()
-    if d in ("reduced", "cut"):
+    if d in ("reduce", "reduced", "reducing", "cut", "cutting"):
         return -1
-    if d in ("increased", "raised"):
+    if d in ("increase", "increased", "increasing", "raise", "raised", "raising", "hike", "hiked"):
         return +1
     return 0
 
