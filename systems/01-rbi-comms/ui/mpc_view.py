@@ -522,18 +522,20 @@ def _render_ask_the_data() -> None:
         suggestions = _SUGGESTED_QUESTIONS_ANALYST
         placeholder = "How has the MPC described transmission lags since February 2025?"
 
-    # Suggested questions as a 3-col grid
+    # Suggested questions as a 3-col grid. Clicking a suggestion writes the
+    # question to session_state and reruns — Streamlit re-evaluates and the
+    # text_input picks up the new value (key-bound widgets ignore `value=`
+    # after the first render, which is the bug we're routing around).
     st.markdown("**💡 Try one of these:**")
     cols = st.columns(3)
-    clicked: str | None = None
     for i, q in enumerate(suggestions):
         with cols[i % 3]:
-            if st.button(q, key=f"sq_{i}_{int(layman)}", use_container_width=True):
-                clicked = q
+            if st.button(q, key=f"sq_{int(layman)}_{i}", use_container_width=True):
+                st.session_state["query_input"] = q
+                st.rerun()
 
     question = st.text_input(
         "Your question" if layman else "Ask about RBI communications",
-        value=clicked or "",
         placeholder=placeholder,
         key="query_input",
     )
