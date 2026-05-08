@@ -191,6 +191,7 @@ def _seed_from_json_sidecar() -> int:
     documents = data.get("documents") or []
     docs_store = CommunicationStore()
     decisions_store = MPCDecisionStore()
+    chunks_store = ChunkStore()
     count = 0
     for d in documents:
         if not all(k in d for k in ("doc_id", "published_at", "title", "full_text")):
@@ -210,6 +211,13 @@ def _seed_from_json_sidecar() -> int:
             **(d.get("signal") or {}),
         }
         docs_store.upsert(document)
+
+        # Chunk + FTS5-index the full text so Query mode finds these docs.
+        # Without this, the backfilled corpus wouldn't be searchable —
+        # the post-Phase-3 corpus would advertise depth that Query mode
+        # couldn't actually serve.
+        chunks = chunk_document(d["doc_id"], d["full_text"], max_chars=1400)
+        chunks_store.insert_chunks(chunks)
 
         decision = d.get("decision")
         if decision and decision.get("repo_rate") is not None:

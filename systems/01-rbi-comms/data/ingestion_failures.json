@@ -1,0 +1,28 @@
+{
+  "failures": [
+    {
+      "prid": 45154,
+      "speech_id": null,
+      "title": "Meeting of the Monetary Policy Committee for the Fifth Bi-monthly Monetary Policy Statement, 2018-19",
+      "url": "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=45154",
+      "reason": "text too short (261 chars) \u2014 likely parse miss",
+      "logged_at": "2026-05-08T06:51:33.852060Z"
+    },
+    {
+      "prid": 44638,
+      "speech_id": null,
+      "title": "Meeting of the Monetary Policy Committee for the Fourth Bi-monthly Monetary Policy Statement, 2018-19",
+      "url": "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=44638",
+      "reason": "text too short (260 chars) \u2014 likely parse miss",
+      "logged_at": "2026-05-08T06:51:40.108444Z"
+    },
+    {
+      "prid": 45659,
+      "speech_id": null,
+      "title": "Meeting of the Monetary Policy Committee for the Sixth Bi-monthly Monetary Policy Statement, 2018-19",
+      "url": "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=45659",
+      "reason": "text too short (331 chars) \u2014 likely parse miss",
+      "logged_at": "2026-05-08T06:51:42.062148Z"
+    }
+  ]
+}
