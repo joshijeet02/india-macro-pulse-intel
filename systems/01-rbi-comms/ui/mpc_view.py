@@ -188,8 +188,9 @@ def _render_archetype_badge(
         return
 
     archetype = classify_statement(latest_decision, prior_decision)
-    similar = find_most_similar_meeting(
+    match = find_most_similar_meeting(
         archetype, history,
+        current_decision=latest_decision,
         exclude_meeting_date=latest_decision.get("meeting_date"),
     )
 
@@ -202,12 +203,8 @@ def _render_archetype_badge(
         "operational_tweak": "#616161",
     }.get(archetype.label, "#1976D2")
 
-    similar_phrase = (
-        f"Reads most like the **{similar['meeting_date']}** meeting "
-        f"(repo {similar['repo_rate']:.2f}%)."
-        if similar else
-        "Not enough historical data for a similar-meeting match yet."
-    )
+    # Confidence-aware similarity copy
+    confidence_phrase = _build_similarity_phrase(match)
 
     st.markdown(
         f"""
@@ -221,11 +218,50 @@ def _render_archetype_badge(
   <div style='font-size: 13px; color: #555; margin-top: 6px;'>
     {archetype.rationale}
   </div>
+  <div style='font-size: 13px; color: #1C1E21; margin-top: 10px;
+              padding-top: 8px; border-top: 1px solid {badge_color}22;'>
+    {confidence_phrase}
+  </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
-    st.caption(similar_phrase)
+
+
+def _build_similarity_phrase(match) -> str:
+    """
+    Render the 'reads most like ... ' line with a confidence-aware tone.
+    The PRD's F4 explicitly bans 'coercing weak matches into a confident-
+    looking output'. Below the 0.55 floor we say so honestly.
+    """
+    label = match.confidence_label
+    if label == "no_match" or match.decision is None:
+        return (
+            "<span style='color: #888;'>"
+            "<b>No clear historical match.</b> "
+            "This MPC reads as a fresh combination of signals — no prior "
+            "meeting in our 9-year corpus is close enough to call out."
+            "</span>"
+        )
+
+    badge = {
+        "strong":   ("#1B5E20", "Strongly resembles"),
+        "moderate": ("#1976D2", "Resembles"),
+        "distant":  ("#757575", "Distantly resembles"),
+    }.get(label, ("#757575", "Resembles"))
+    color, headline = badge
+
+    d = match.decision
+    rate = d.get("repo_rate")
+    rate_str = f" (repo {rate:.2f}%)" if rate is not None else ""
+    return (
+        f"<b>{headline}</b> the "
+        f"<b>{d['meeting_date']}</b> meeting{rate_str} "
+        f"<span style='color: #888; font-size: 11px;'>· score {match.score:.2f}</span><br/>"
+        f"<span style='color: #555; font-size: 12px;'>"
+        f"{match.rationale}"
+        f"</span>"
+    )
 
 
 def _render_macro_callout(latest_decision: dict | None) -> None:
@@ -293,12 +329,24 @@ def _render_what_changed(latest_doc: dict, prior_doc: dict | None) -> None:
         f"**Comparing** {prior_doc['published_at']} → {latest_doc['published_at']}"
     )
 
-    # ─── Theme-grouped diff (Phase 2) ──────────────────────────────────────
+    # ─── Theme-grouped diff (Phase 2) + theme-archetype matching (F5) ──────
     # Replaces the old paragraph-aligned view. Analysts think in themes
     # (Growth / Inflation / Liquidity / etc.) — diffing at the theme level
     # produces output that's directly paste-able into a desk note.
+    # The historical_corpus param feeds F5: per-theme "reads most like"
+    # pattern matching against the full 9-year MPC corpus.
+    historical_corpus = [
+        d for d in CommunicationStore().list_recent(limit=200)
+        if d.get("document_type") == "MPC Statement"
+        and d.get("published_at") not in (
+            latest_doc.get("published_at"), prior_doc.get("published_at"),
+        )
+    ]
     with st.spinner("Grouping by theme and summarizing changes…"):
-        deltas = theme_diff_for_pair(prior_doc, latest_doc)
+        deltas = theme_diff_for_pair(
+            prior_doc, latest_doc,
+            historical_corpus=historical_corpus,
+        )
 
     has_summaries = any(d.summary for d in deltas)
     if not has_summaries and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -481,6 +529,30 @@ def _render_theme_cards(deltas: list) -> None:
                     '</div>'
                 )
 
+            # F5: per-theme "reads most like" line, with confidence-aware copy
+            archetype_html = ""
+            if d.similar_match_confidence:
+                if d.similar_match_confidence == "no_match":
+                    # Honest "no clear match" — no coercion. Hide on cards
+                    # where corpus is genuinely too sparse for matching.
+                    pass
+                else:
+                    badge = {
+                        "strong":   ("#1B5E20", "Strongly resembles"),
+                        "moderate": ("#1976D2", "Resembles"),
+                        "distant":  ("#757575", "Distantly resembles"),
+                    }.get(d.similar_match_confidence, ("#757575", "Resembles"))
+                    color, headline = badge
+                    archetype_html = (
+                        f'<div style="margin-top: 0.7rem; padding-top: 0.5rem; '
+                        f'border-top: 1px solid #2d3561; font-size: 0.78rem; '
+                        f'color: #a8b3c7;">'
+                        f'<span style="color: {color}; font-weight: 600;">{headline}</span> '
+                        f'the <b>{d.similar_match_date}</b> meeting '
+                        f'<span style="color: #6a7385;">(score {d.similar_match_score:.2f})</span>'
+                        f'</div>'
+                    )
+
             st.markdown(
                 f"""
 <div class="theme-card">
@@ -488,6 +560,7 @@ def _render_theme_cards(deltas: list) -> None:
     <div class="theme-card-meta">{meta}</div>
     {summary_html}
     <div>{chips_html or '<span class="theme-card-empty">No tracked phrase changes.</span>'}</div>
+    {archetype_html}
 </div>
                 """,
                 unsafe_allow_html=True,

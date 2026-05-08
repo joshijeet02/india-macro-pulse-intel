@@ -52,6 +52,11 @@ class ThemeDelta:
     phrases_added:   list[str] = field(default_factory=list)
     phrases_removed: list[str] = field(default_factory=list)
     summary:         Optional[str] = None  # LLM-generated; may be None if API unavailable
+    # F5: per-theme historical match (deterministic, no LLM)
+    similar_match_date:        Optional[str] = None
+    similar_match_score:       Optional[float] = None
+    similar_match_confidence:  Optional[str] = None  # 'strong'|'moderate'|'distant'|'no_match'|None
+    similar_match_rationale:   Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -184,11 +189,15 @@ def theme_diff_for_pair(
     prev_doc: dict,
     curr_doc: dict,
     use_cache: bool = True,
+    historical_corpus: Optional[list[dict]] = None,
 ) -> list[ThemeDelta]:
     """
     Produce theme-grouped diffs between two MPC Statement documents.
 
     `prev_doc` / `curr_doc` need: doc_id, full_text, published_at.
+    `historical_corpus`: optional list of past Statement documents
+      (each with full_text + published_at). When supplied, each theme card
+      gets a "reads most like ..." historical match line — F5 from the PRD.
 
     Returns a list[ThemeDelta] in canonical theme order, including only themes
     that have at least one paragraph in either document.
@@ -235,10 +244,41 @@ def theme_diff_for_pair(
         curr_date=curr_doc.get("published_at", ""),
     )
 
+    # Pre-compute per-theme historical text mapping for F5 (theme-archetype).
+    # Skip if no corpus supplied or it's just 1-2 docs (matching needs depth).
+    historical_themes_by_theme: dict[str, dict[str, str]] = {}
+    if historical_corpus and len(historical_corpus) >= 5:
+        from engine.theme_chunker import chunk_by_theme as _chunk
+        for hist_doc in historical_corpus:
+            d_id = hist_doc.get("published_at")
+            if not d_id or d_id == curr_doc.get("published_at"):
+                continue
+            hist_themes = _chunk(hist_doc.get("full_text", ""))
+            for theme, paragraphs in hist_themes.items():
+                if not paragraphs:
+                    continue
+                historical_themes_by_theme.setdefault(theme, {})[d_id] = "\n\n".join(paragraphs)
+
     deltas: list[ThemeDelta] = []
     for tp in theme_pairs:
         theme = tp["theme"]
         added, removed = _theme_phrase_deltas(tp["prev_text"], tp["curr_text"])
+
+        # F5: per-theme historical match (if corpus supplied)
+        hist_match_date = None
+        hist_match_score = None
+        hist_match_label = None
+        hist_match_rationale = None
+        per_theme_historical = historical_themes_by_theme.get(theme, {})
+        if per_theme_historical and tp["curr_text"]:
+            from engine.archetype import find_similar_theme
+            theme_match = find_similar_theme(tp["curr_text"], per_theme_historical)
+            hist_match_label = theme_match.confidence_label
+            hist_match_score = theme_match.score
+            hist_match_rationale = theme_match.rationale
+            if theme_match.decision:
+                hist_match_date = theme_match.decision.get("meeting_date")
+
         deltas.append(ThemeDelta(
             theme=theme,
             icon=THEME_ICONS.get(theme, ""),
@@ -247,6 +287,10 @@ def theme_diff_for_pair(
             phrases_added=added,
             phrases_removed=removed,
             summary=summaries.get(theme),
+            similar_match_date=hist_match_date,
+            similar_match_score=hist_match_score,
+            similar_match_confidence=hist_match_label,
+            similar_match_rationale=hist_match_rationale,
         ))
 
     # Persist to cache (best-effort)
