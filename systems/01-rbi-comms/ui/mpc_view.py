@@ -289,7 +289,15 @@ def _render_what_changed(latest_doc: dict, prior_doc: dict | None) -> None:
         return
 
     diffs = diff_documents(prior_doc["full_text"], latest_doc["full_text"])
-    summary = summarize_diff(diffs)
+    # Pass the full texts so the summary computes set differences at the
+    # document level — guarantees `phrases_added` and `phrases_removed`
+    # are disjoint (set algebra), not paragraph-level unions which can
+    # report a phrase in both lists when it moves between paragraphs.
+    summary = summarize_diff(
+        diffs,
+        prev_text=prior_doc["full_text"],
+        curr_text=latest_doc["full_text"],
+    )
 
     cols = st.columns(3)
     cols[0].metric("Paragraphs changed", summary["paragraphs_changed"])

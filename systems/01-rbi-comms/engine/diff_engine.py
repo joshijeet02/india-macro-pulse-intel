@@ -129,11 +129,36 @@ def diff_documents(prev_text: str, curr_text: str) -> list[ParagraphDiff]:
     return out
 
 
-def summarize_diff(diffs: list[ParagraphDiff]) -> dict:
-    """Aggregate stats for the 'What Changed' header."""
+def summarize_diff(
+    diffs: list[ParagraphDiff],
+    prev_text: str | None = None,
+    curr_text: str | None = None,
+) -> dict:
+    """
+    Aggregate stats for the 'What Changed' header.
+
+    `phrases_added` and `phrases_removed` should be DISJOINT by definition
+    — a phrase that "moved" between paragraphs of the same document hasn't
+    actually entered or left the document. Compute them at the document
+    level (set difference) when the full texts are supplied. Falls back to
+    paragraph-level union when texts are not supplied (legacy behavior),
+    but that path can produce overlap and should only be used by tests.
+    """
     paragraphs_changed = len(diffs)
-    all_added = sorted({p for d in diffs for p in d.phrases_added})
-    all_removed = sorted({p for d in diffs for p in d.phrases_removed})
+
+    if prev_text is not None and curr_text is not None:
+        # Document-level set membership — guaranteed disjoint by set algebra.
+        prev_phrases = _phrases_in(prev_text)
+        curr_phrases = _phrases_in(curr_text)
+        all_added = sorted(curr_phrases - prev_phrases)
+        all_removed = sorted(prev_phrases - curr_phrases)
+    else:
+        # Legacy fallback — kept for API compatibility but not recommended.
+        # This path can report a phrase as both "added" and "removed" when it
+        # appears in different paragraphs in each document.
+        all_added = sorted({p for d in diffs for p in d.phrases_added})
+        all_removed = sorted({p for d in diffs for p in d.phrases_removed})
+
     return {
         "paragraphs_changed": paragraphs_changed,
         "phrases_added":      all_added,
