@@ -26,6 +26,7 @@ from engine.diff_engine import diff_documents, summarize_diff
 from engine.focus_terms import detect_new_focus_terms
 from engine.plain_summary import render_plain_summary
 from engine.stance_engine import analyze_communication
+from engine.theme_diff import theme_diff_for_pair
 from ui._mode import is_plain, render_glossary_expander
 
 
@@ -288,29 +289,40 @@ def _render_what_changed(latest_doc: dict, prior_doc: dict | None) -> None:
         st.write(latest_doc.get("summary") or latest_doc["full_text"][:1000])
         return
 
+    st.markdown(
+        f"**Comparing** {prior_doc['published_at']} → {latest_doc['published_at']}"
+    )
+
+    # ─── Theme-grouped diff (Phase 2) ──────────────────────────────────────
+    # Replaces the old paragraph-aligned view. Analysts think in themes
+    # (Growth / Inflation / Liquidity / etc.) — diffing at the theme level
+    # produces output that's directly paste-able into a desk note.
+    with st.spinner("Grouping by theme and summarizing changes…"):
+        deltas = theme_diff_for_pair(prior_doc, latest_doc)
+
+    has_summaries = any(d.summary for d in deltas)
+    if not has_summaries and not os.environ.get("ANTHROPIC_API_KEY"):
+        st.caption(
+            "💡 Set `ANTHROPIC_API_KEY` in Streamlit secrets to enable LLM "
+            "contextual summaries on each theme card. Phrase deltas below "
+            "render either way."
+        )
+
+    _render_theme_cards(deltas)
+
+    # ─── Document-level summary (kept for headline metrics) ────────────────
     diffs = diff_documents(prior_doc["full_text"], latest_doc["full_text"])
-    # Pass the full texts so the summary computes set differences at the
-    # document level — guarantees `phrases_added` and `phrases_removed`
-    # are disjoint (set algebra), not paragraph-level unions which can
-    # report a phrase in both lists when it moves between paragraphs.
     summary = summarize_diff(
         diffs,
         prev_text=prior_doc["full_text"],
         curr_text=latest_doc["full_text"],
     )
-
+    st.divider()
+    st.markdown("##### Document-level summary")
     cols = st.columns(3)
     cols[0].metric("Paragraphs changed", summary["paragraphs_changed"])
-    cols[1].metric("Phrases added", len(summary["phrases_added"]))
-    cols[2].metric("Phrases removed", len(summary["phrases_removed"]))
-
-    # Surface lexicon-tracked language transitions prominently
-    if summary["phrases_added"] or summary["phrases_removed"]:
-        st.markdown("##### Tracked language transitions")
-        if summary["phrases_added"]:
-            st.success("**Newly appeared:** " + ", ".join(f"`{p}`" for p in summary["phrases_added"][:10]))
-        if summary["phrases_removed"]:
-            st.warning("**Dropped:** " + ", ".join(f"`{p}`" for p in summary["phrases_removed"][:10]))
+    cols[1].metric("Phrases entered", len(summary["phrases_added"]))
+    cols[2].metric("Phrases exited", len(summary["phrases_removed"]))
 
     # Theme-drift watchlist: which macro topics are NEW this MPC
     focus = detect_new_focus_terms(
@@ -318,7 +330,6 @@ def _render_what_changed(latest_doc: dict, prior_doc: dict | None) -> None:
         prior_doc.get("full_text", ""),
     )
     if focus["new"] or focus["dropped"]:
-        st.markdown("##### Macro theme drift (watchlist)")
         cols = st.columns(2)
         if focus["new"]:
             cols[0].markdown(
@@ -331,26 +342,30 @@ def _render_what_changed(latest_doc: dict, prior_doc: dict | None) -> None:
                 + ", ".join(f"`{t}`" for t in focus["dropped"])
             )
         st.caption(
-            "13-term watchlist tracking food/transmission/monsoon/global etc. "
-            "What RBI stops talking about is often as informative as what it adds."
+            "13-term watchlist tracking food/transmission/monsoon/global etc."
         )
 
-    # Per-paragraph diff
-    st.markdown(f"**Comparing** {prior_doc['published_at']} → {latest_doc['published_at']}")
+    # ─── Per-paragraph drilldown (kept for analysts who want the raw view) ──
     if not diffs:
         st.success("Statements are identical paragraph-for-paragraph.")
         return
 
-    for d in diffs[:30]:  # cap render budget
-        with st.expander(
-            f"¶ {d.paragraph_number}  ·  "
-            f"{'➕' if not d.prev_text else '➖' if not d.curr_text else '✏️'}  "
-            f"{(d.curr_text or d.prev_text or '')[:80]}",
-        ):
+    with st.expander(f"📑 Per-paragraph diff (raw — {len(diffs)} changed paragraphs)"):
+        # Streamlit doesn't allow nested expanders, so flatten with separators.
+        for d in diffs[:30]:
+            marker = "➕" if not d.prev_text else "➖" if not d.curr_text else "✏️"
+            preview = (d.curr_text or d.prev_text or "")[:80]
+            st.markdown(f"**¶ {d.paragraph_number} · {marker}** {preview}")
             if d.phrases_added:
-                st.markdown("**Phrases added:** " + ", ".join(f"`{p}`" for p in d.phrases_added))
+                st.markdown(
+                    "Phrases added: "
+                    + ", ".join(f"`{p}`" for p in d.phrases_added)
+                )
             if d.phrases_removed:
-                st.markdown("**Phrases removed:** " + ", ".join(f"`{p}`" for p in d.phrases_removed))
+                st.markdown(
+                    "Phrases removed: "
+                    + ", ".join(f"`{p}`" for p in d.phrases_removed)
+                )
             if d.prev_text and d.curr_text:
                 lc, rc = st.columns(2)
                 with lc:
@@ -365,6 +380,118 @@ def _render_what_changed(latest_doc: dict, prior_doc: dict | None) -> None:
             else:
                 st.caption("Removed paragraph")
                 st.write(d.prev_text)
+            st.divider()
+
+
+# ─── Theme cards (Phase 2 — what an analyst paste-copies into a desk note) ──
+
+def _render_theme_cards(deltas: list) -> None:
+    """
+    Render the theme-grouped diff as a 2-up card grid. Each card surfaces:
+    icon + theme + paragraph count delta, the LLM contextual summary (if any),
+    phrase entries/exits as small chips. The card body is designed to be
+    paste-copy-ready into a Bloomberg / desk note.
+    """
+    if not deltas:
+        return
+
+    # Card CSS — matches Glossary tab vocabulary so the surface feels coherent.
+    st.markdown(
+        """
+<style>
+.theme-card {
+    background: linear-gradient(135deg, #1a1f2e 0%, #16213e 100%);
+    border: 1px solid #2d3561;
+    border-radius: 12px;
+    padding: 1.1rem 1.4rem;
+    margin-bottom: 0.8rem;
+    min-height: 180px;
+}
+.theme-card-head {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #7eb8f7;
+    margin-bottom: 0.4rem;
+}
+.theme-card-meta {
+    font-size: 0.78rem;
+    color: #8a93a8;
+    margin-bottom: 0.6rem;
+}
+.theme-card-summary {
+    font-size: 0.94rem;
+    color: #e6ecf5;
+    line-height: 1.55;
+    margin-bottom: 0.7rem;
+}
+.theme-chip-added {
+    display: inline-block;
+    background: #1f4b3a;
+    color: #b6e8c8;
+    border: 1px solid #2d6b50;
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin: 2px 4px 2px 0;
+    font-size: 0.78rem;
+}
+.theme-chip-removed {
+    display: inline-block;
+    background: #4b1f1f;
+    color: #f0b6b6;
+    border: 1px solid #6b2d2d;
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin: 2px 4px 2px 0;
+    font-size: 0.78rem;
+    text-decoration: line-through;
+}
+.theme-card-empty {
+    font-size: 0.85rem;
+    color: #8a93a8;
+    font-style: italic;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(2)
+    for i, d in enumerate(deltas):
+        with cols[i % 2]:
+            head = f"{d.icon} {d.theme}"
+            meta = f"{d.prev_paragraphs} → {d.curr_paragraphs} paragraphs"
+            chips_html = ""
+            for p in d.phrases_added[:8]:
+                chips_html += f'<span class="theme-chip-added">+ {p}</span>'
+            for p in d.phrases_removed[:8]:
+                chips_html += f'<span class="theme-chip-removed">{p}</span>'
+
+            if d.summary:
+                summary_html = f'<div class="theme-card-summary">{d.summary}</div>'
+            elif d.phrases_added or d.phrases_removed:
+                summary_html = (
+                    '<div class="theme-card-empty">'
+                    'Phrase deltas only — set ANTHROPIC_API_KEY for contextual summary.'
+                    '</div>'
+                )
+            else:
+                summary_html = (
+                    '<div class="theme-card-empty">'
+                    'Unchanged: no tracked phrases entered or exited this theme.'
+                    '</div>'
+                )
+
+            st.markdown(
+                f"""
+<div class="theme-card">
+    <div class="theme-card-head">{head}</div>
+    <div class="theme-card-meta">{meta}</div>
+    {summary_html}
+    <div>{chips_html or '<span class="theme-card-empty">No tracked phrase changes.</span>'}</div>
+</div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 # ─── Projections tab ─────────────────────────────────────────────────────────
