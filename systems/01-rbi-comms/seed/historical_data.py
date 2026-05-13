@@ -192,7 +192,14 @@ def _seed_from_json_sidecar() -> int:
     docs_store = CommunicationStore()
     decisions_store = MPCDecisionStore()
     chunks_store = ChunkStore()
+    members_store = MemberViewStore()
     count = 0
+
+    # First pass — persist Communications + Decisions for every doc. Doing
+    # this in two passes (Statements first, then Minutes) lets the second
+    # pass align each Minutes' member rows to the underlying meeting_date
+    # the Statement already wrote into mpc_decisions.
+    minutes_to_process: list[dict] = []
     for d in documents:
         if not all(k in d for k in ("doc_id", "published_at", "title", "full_text")):
             continue
@@ -222,8 +229,69 @@ def _seed_from_json_sidecar() -> int:
         decision = d.get("decision")
         if decision and decision.get("repo_rate") is not None:
             decisions_store.upsert({**decision, "doc_id": d["doc_id"]})
+
+        if d.get("document_type") == "MPC Minutes":
+            minutes_to_process.append(d)
+
         count += 1
+
+    # Second pass — per-member analysis on every Minutes document. Without
+    # this, the historical corpus (Oct 2016 – early 2025 Minutes that live
+    # in the JSON sidecar rather than the bundled fixtures) is invisible to
+    # the per-member view, the cross-meeting stance heatmap, and the dissent
+    # tracker. Most consequentially, Prof. Jayanth R. Varma's entire dissent
+    # record (Dec 2022 + Feb 2023 rate dissents) silently disappears.
+    for d in minutes_to_process:
+        meeting_date = _resolve_minutes_meeting_date(d, decisions_store)
+        try:
+            analysis = analyze_minutes(d["full_text"], meeting_date)
+        except Exception as exc:  # never block boot on a bad fixture
+            log.warning(f"analyze_minutes failed for {d.get('doc_id')}: {exc}")
+            continue
+        if not analysis.members:
+            continue
+        payload = [
+            {
+                "member_name":       m.name,
+                "honorific":         m.honorific,
+                "vote":              m.vote,
+                "stance_label":      m.stance_label,
+                "stance_score":      m.stance_score,
+                "inflation_label":   m.inflation_label,
+                "growth_label":      m.growth_label,
+                "statement_excerpt": m.statement[:1500],
+            }
+            for m in analysis.members
+        ]
+        members_store.upsert_many(meeting_date, payload)
+
     return count
+
+
+def _resolve_minutes_meeting_date(
+    minutes_doc: dict, decisions_store: "MPCDecisionStore"
+) -> str:
+    """
+    Map a Minutes document to the underlying MPC meeting_date.
+
+    The Minutes are published ~2 weeks after the meeting; the Statement (which
+    populates mpc_decisions.meeting_date) is published on the meeting's last
+    day. We look up the Statement with the closest meeting_date in the same
+    calendar month and reuse it, so per-member rows join cleanly to decisions.
+
+    Falls back to the Minutes' own published_at when no matching Statement
+    exists in the store yet.
+    """
+    pub = minutes_doc.get("published_at") or ""
+    year_month = pub[:7]
+    if not year_month:
+        return pub or ""
+    # Scan recent decisions for one in the same year-month
+    for row in decisions_store.get_history(limit=200):
+        md = row.get("meeting_date") or ""
+        if md.startswith(year_month):
+            return md
+    return pub
 
 
 def seed() -> None:

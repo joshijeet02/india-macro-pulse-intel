@@ -27,9 +27,20 @@ from engine.stance_engine import analyze_communication
 
 # Member name patterns. RBI honorifics: Dr. / Shri / Smt.
 _HONORIFICS = r"(?:Dr\.|Shri|Smt\.|Prof\.|Mr\.|Ms\.|Mrs\.)"
+
+# A name token is either a full word (Jayanth, Varma) or a single-letter
+# initial with optional period (R., D). Without the initial branch, names
+# like "Jayanth R. Varma" silently fail to match — which is exactly what
+# happened to Prof. Varma's votes across the entire Dec 2022 – Oct 2023
+# dissent series. Tests in tests/test_minutes_extractor.py pin this.
+_NAME_TOKEN = r"(?:[A-Z][a-zA-Z]+|[A-Z]\.?)"
+
+# Tokens are separated by horizontal whitespace only — never by newlines —
+# so the regex cannot greedy-extend across a line break into the body of a
+# Statement section.
 _NAME_PATTERN = (
-    rf"(?P<honorific>{_HONORIFICS})\s+"
-    rf"(?P<name>[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){{1,3}})"
+    rf"(?P<honorific>{_HONORIFICS})[ \t]+"
+    rf"(?P<name>{_NAME_TOKEN}(?:[ \t]+{_NAME_TOKEN}){{1,3}})"
 )
 
 # "Statement by Dr. Foo Bar" — the section delimiter
