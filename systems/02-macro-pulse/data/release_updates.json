@@ -17,6 +17,22 @@
       "intermediate_goods_yoy": 3.3,
       "consensus_forecast": null,
       "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1777370981972_ac151bbf-29ab-4f2c-a10e-bd727a4d3564_IIP_Press_release_March_2026.pdf"
+    },
+    {
+      "reference_month": "2026-04",
+      "release_date": "2026-06-01",
+      "headline_yoy": 4.9,
+      "manufacturing_yoy": null,
+      "mining_yoy": null,
+      "electricity_yoy": null,
+      "capital_goods_yoy": 16.0,
+      "consumer_durables_yoy": 4.3,
+      "consumer_nondurables_yoy": 2.8,
+      "infra_construction_yoy": 7.1,
+      "primary_goods_yoy": 0.4,
+      "intermediate_goods_yoy": 7.7,
+      "consensus_forecast": null,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1780371708887_52b83604-666c-443a-82c6-4411103e2ede_Press_Release_IIP_2022-23f.pdf"
     }
   ]
 }
