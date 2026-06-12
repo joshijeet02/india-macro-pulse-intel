@@ -1,6 +1,16 @@
 {
   "_comment": "Autonomous additions to the CPI/IIP series, written by scripts/refresh_releases.py. Merged on top of seed/historical_data.py at app boot. Newer reference_months override hardcoded entries. Hand-edits are fine but the schedule of runs will overwrite this file when MOSPI publishes a fresh release.",
-  "cpi": [],
+  "cpi": [
+    {
+      "reference_month": "2026-04",
+      "release_date": "2026-06-12",
+      "headline_yoy": 3.93,
+      "food_yoy": 4.78,
+      "fuel_yoy": null,
+      "consensus_forecast": null,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1781259853555_04875571-19f2-4830-9cad-3a1bfd5992e1_Press_Release_of_CPI_for_May_2026.pdf"
+    }
+  ],
   "iip": [
     {
       "reference_month": "2026-03",
