@@ -9,6 +9,15 @@
       "fuel_yoy": null,
       "consensus_forecast": null,
       "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1781259853555_04875571-19f2-4830-9cad-3a1bfd5992e1_Press_Release_of_CPI_for_May_2026.pdf"
+    },
+    {
+      "reference_month": "2026-05",
+      "release_date": "2026-07-13",
+      "headline_yoy": 4.38,
+      "food_yoy": 5.32,
+      "fuel_yoy": null,
+      "consensus_forecast": null,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1783937698596_1013f1a1-3400-41aa-b4f4-5bbff10db7b7_Press_Release_of_CPI_for_June_2026.pdf"
     }
   ],
   "iip": [
