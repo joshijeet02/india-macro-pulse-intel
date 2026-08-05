@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from engine.index_formula import jevons_elementary
+from engine.index_formula import chain_link, jevons_elementary, young_aggregate
 
 
 def test_single_quote_returns_its_own_ratio():
@@ -48,9 +48,6 @@ def test_no_usable_pairs_raises():
         jevons_elementary([0.0], [100.0])
 
 
-from engine.index_formula import young_aggregate
-
-
 def test_young_uniform_rise():
     relatives = {"rice": 1.10, "atta": 1.10}
     weights = {"rice": 14.0, "atta": 12.3}
@@ -87,14 +84,11 @@ def test_young_empty_raises():
         young_aggregate({}, {})
 
 
-from engine.index_formula import chain_link
-
-
 def test_chain_link_uniform_rise():
     prev_prices = {"rice": 100.0, "atta": 100.0}
     curr_prices = {"rice": 110.0, "atta": 110.0}
     weights = {"rice": 14.0, "atta": 12.3}
-    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(110.0)
+    assert chain_link(100.0, curr_prices, prev_prices, weights).level == pytest.approx(110.0)
 
 
 def test_chain_link_compounds_onto_previous_level():
@@ -102,7 +96,7 @@ def test_chain_link_compounds_onto_previous_level():
     curr_prices = {"rice": 121.0}
     weights = {"rice": 14.0}
     # previous level 110, this period +10% -> 121
-    assert chain_link(110.0, curr_prices, prev_prices, weights) == pytest.approx(121.0)
+    assert chain_link(110.0, curr_prices, prev_prices, weights).level == pytest.approx(121.0)
 
 
 def test_chain_link_ignores_item_missing_this_period():
@@ -113,19 +107,19 @@ def test_chain_link_ignores_item_missing_this_period():
     prev_prices = {"rice": 100.0, "atta": 100.0}
     curr_prices = {"atta": 100.0}          # atta flat, rice absent
     weights = {"rice": 14.0, "atta": 12.3}
-    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(100.0)
+    assert chain_link(100.0, curr_prices, prev_prices, weights).level == pytest.approx(100.0)
 
 
 def test_chain_link_ignores_item_new_this_period():
     prev_prices = {"atta": 100.0}
     curr_prices = {"atta": 100.0, "rice": 500.0}   # rice brand new
     weights = {"rice": 14.0, "atta": 12.3}
-    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(100.0)
+    assert chain_link(100.0, curr_prices, prev_prices, weights).level == pytest.approx(100.0)
 
 
 def test_chain_link_no_overlap_returns_previous_level_unchanged():
     # Nothing matched: we know nothing about price change, so hold the level.
-    assert chain_link(107.5, {"rice": 110.0}, {"atta": 100.0}, {"rice": 1.0}) == 107.5
+    assert chain_link(107.5, {"rice": 110.0}, {"atta": 100.0}, {"rice": 1.0}).level == 107.5
 
 
 def test_chain_link_weighted_partial_movement():
@@ -134,6 +128,70 @@ def test_chain_link_weighted_partial_movement():
     prev_prices = {"rice": 100.0, "atta": 100.0}
     curr_prices = {"rice": 110.0, "atta": 100.0}
     weights = {"rice": 14.0, "atta": 12.3}
-    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(
+    assert chain_link(100.0, curr_prices, prev_prices, weights).level == pytest.approx(
         105.3231939, abs=1e-6
     )
+
+
+def test_chain_link_reports_matched_and_eligible_counts():
+    weights = {"rice": 14.0, "atta": 12.3}
+    result = chain_link(
+        100.0, {"atta": 100.0}, {"rice": 100.0, "atta": 100.0}, weights
+    )
+    assert result.matched == 1
+    assert result.eligible == 2
+    assert result.coverage_pct == pytest.approx(50.0)
+    assert result.has_matched_sample is True
+
+
+def test_chain_link_no_overlap_reports_zero_matched():
+    result = chain_link(107.5, {"rice": 110.0}, {"atta": 100.0}, {"rice": 1.0})
+    assert result.level == 107.5
+    assert result.matched == 0
+    assert result.coverage_pct == 0.0
+    assert result.has_matched_sample is False
+
+
+def test_chain_link_excludes_matched_item_with_non_positive_current_price():
+    # rice is present in both periods and weighted, but its current price is 0
+    weights = {"rice": 14.0, "atta": 12.3}
+    result = chain_link(
+        100.0,
+        {"rice": 0.0, "atta": 110.0},
+        {"rice": 100.0, "atta": 100.0},
+        weights,
+    )
+    assert result.level == pytest.approx(110.0)
+    assert result.matched == 1
+
+
+def test_chain_link_excludes_matched_item_with_non_positive_previous_price():
+    weights = {"rice": 14.0, "atta": 12.3}
+    result = chain_link(
+        100.0,
+        {"rice": 110.0, "atta": 110.0},
+        {"rice": 0.0, "atta": 100.0},
+        weights,
+    )
+    assert result.level == pytest.approx(110.0)
+    assert result.matched == 1
+
+
+def test_chain_link_excludes_matched_item_with_zero_weight():
+    result = chain_link(
+        100.0,
+        {"rice": 110.0, "atta": 110.0},
+        {"rice": 100.0, "atta": 100.0},
+        {"rice": 0.0, "atta": 12.3},
+    )
+    assert result.level == pytest.approx(110.0)
+    assert result.matched == 1
+    assert result.eligible == 2
+
+
+def test_chain_link_zero_eligible_reports_zero_coverage():
+    result = chain_link(100.0, {}, {}, {})
+    assert result.level == 100.0
+    assert result.matched == 0
+    assert result.eligible == 0
+    assert result.coverage_pct == 0.0
