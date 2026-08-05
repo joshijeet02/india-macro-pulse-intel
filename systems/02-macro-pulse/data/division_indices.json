@@ -1,0 +1,104 @@
+{
+  "_comment": "Division-wise CPI index levels parsed from MOSPI monthly releases (Annexure I, All-India Combined, base 2024=100). The live index anchors on the latest month here. Every entry passed the rebuild check: a weighted aggregate of its divisions reproduces the headline MOSPI printed on the same page. Releases that fail that check are omitted rather than stored, because a mis-parsed anchor would move every reading without looking broken.",
+  "months": {
+    "2026-01": {
+      "divisions": {
+        "food_and_beverages": 104.03,
+        "paan_tobacco_and_intoxicants": 104.42,
+        "clothing_and_footwear": 105.92,
+        "housing_water_electricity_gas_fuel": 102.02,
+        "furnishings_household_equipment": 102.97,
+        "health": 103.91,
+        "transport": 100.64,
+        "information_and_communication": 103.3,
+        "recreation_sport_and_culture": 104.03,
+        "education_services": 105.33,
+        "restaurants_and_accommodation": 105.71,
+        "personal_care_and_misc": 122.63
+      },
+      "inflation": {
+        "food_and_beverages": 2.11,
+        "paan_tobacco_and_intoxicants": 2.86,
+        "clothing_and_footwear": 2.98,
+        "housing_water_electricity_gas_fuel": 1.53,
+        "furnishings_household_equipment": 1.45,
+        "health": 2.19,
+        "transport": 0.09,
+        "information_and_communication": 0.16,
+        "recreation_sport_and_culture": 2.32,
+        "education_services": 3.35,
+        "restaurants_and_accommodation": 2.87,
+        "personal_care_and_misc": 19.02
+      },
+      "headline_index": 104.46,
+      "headline_yoy": 2.75,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1770891893893_6b458c0a-c327-4fef-a554-41131ea67273_Press_Relase_of_CPI_for_Jan26.pdf"
+    },
+    "2026-04": {
+      "divisions": {
+        "food_and_beverages": 104.35,
+        "paan_tobacco_and_intoxicants": 107.24,
+        "clothing_and_footwear": 106.84,
+        "housing_water_electricity_gas_fuel": 102.83,
+        "furnishings_household_equipment": 103.78,
+        "health": 104.15,
+        "transport": 100.84,
+        "information_and_communication": 103.66,
+        "recreation_sport_and_culture": 104.15,
+        "education_services": 105.93,
+        "restaurants_and_accommodation": 107.98,
+        "personal_care_and_misc": 124.02
+      },
+      "inflation": {
+        "food_and_beverages": 4.01,
+        "paan_tobacco_and_intoxicants": 4.76,
+        "clothing_and_footwear": 2.8,
+        "housing_water_electricity_gas_fuel": 1.71,
+        "furnishings_household_equipment": 1.61,
+        "health": 1.64,
+        "transport": -0.01,
+        "information_and_communication": 0.5,
+        "recreation_sport_and_culture": 2.11,
+        "education_services": 3.15,
+        "restaurants_and_accommodation": 4.2,
+        "personal_care_and_misc": 17.66
+      },
+      "headline_index": 105.12,
+      "headline_yoy": 3.48,
+      "source": "https://www.mospi.gov.in/uploads/PressRelease/CPI%20Press%20Release%20of%20April%202026.pdf"
+    },
+    "2026-06": {
+      "divisions": {
+        "food_and_beverages": 106.98,
+        "paan_tobacco_and_intoxicants": 107.94,
+        "clothing_and_footwear": 107.97,
+        "housing_water_electricity_gas_fuel": 103.54,
+        "furnishings_household_equipment": 104.8,
+        "health": 104.51,
+        "transport": 105.45,
+        "information_and_communication": 104.02,
+        "recreation_sport_and_culture": 104.36,
+        "education_services": 107.52,
+        "restaurants_and_accommodation": 111.46,
+        "personal_care_and_misc": 124.71
+      },
+      "inflation": {
+        "food_and_beverages": 5.05,
+        "paan_tobacco_and_intoxicants": 4.83,
+        "clothing_and_footwear": 3.23,
+        "housing_water_electricity_gas_fuel": 1.99,
+        "furnishings_household_equipment": 2.19,
+        "health": 1.42,
+        "transport": 4.31,
+        "information_and_communication": 0.43,
+        "recreation_sport_and_culture": 1.75,
+        "education_services": 3.34,
+        "restaurants_and_accommodation": 6.91,
+        "personal_care_and_misc": 16.72
+      },
+      "headline_index": 107.0,
+      "headline_yoy": 4.38,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1783937698596_1013f1a1-3400-41aa-b4f4-5bbff10db7b7_Press_Release_of_CPI_for_June_2026.pdf"
+    }
+  }
+}

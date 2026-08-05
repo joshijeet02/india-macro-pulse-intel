@@ -163,3 +163,29 @@ def test_no_movement_still_reproduces_the_anchor_with_shares_applied():
     assert compute_live_index(
         {"food_and_beverages": 1.0, "personal_care_and_misc": 1.0}
     ).index == pytest.approx(ANCHOR_HEADLINE_INDEX, abs=0.02)
+
+
+def test_anchor_is_loaded_from_parsed_history_not_hardcoded():
+    """
+    A hardcoded anchor goes stale the moment MOSPI publishes again, silently.
+    The anchor must come from the newest parsed release.
+    """
+    import json
+    from engine.live_index import ANCHOR_MONTH, DIVISION_HISTORY_PATH, load_anchor
+
+    payload = json.loads(DIVISION_HISTORY_PATH.read_text())
+    assert ANCHOR_MONTH == max(payload["months"]), "anchor is not the latest month"
+
+    month, divisions, headline = load_anchor()
+    assert len(divisions) == 12
+    assert headline > 0
+
+
+def test_anchor_divisions_rebuild_the_anchor_headline():
+    """The loaded anchor must be internally consistent, not just present."""
+    from engine.live_index import ANCHOR_DIVISION_INDICES, ANCHOR_HEADLINE_INDEX
+    total = sum(CPI_2024_DIVISIONS[k] for k in ANCHOR_DIVISION_INDICES)
+    rebuilt = sum(
+        CPI_2024_DIVISIONS[k] * v for k, v in ANCHOR_DIVISION_INDICES.items()
+    ) / total
+    assert rebuilt == pytest.approx(ANCHOR_HEADLINE_INDEX, abs=0.05)

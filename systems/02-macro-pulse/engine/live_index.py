@@ -32,17 +32,49 @@ every reading reflects real observed movement.
 """
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Mapping, Optional
+
+log = logging.getLogger(__name__)
 
 from engine.basket_weights import CPI_2024_DIVISIONS
 from engine.index_formula import young_aggregate
 
-# Official division indices, All-India Combined, base 2024=100.
-# Source: MOSPI CPI press release for June 2026, Annexure I. Retrieved
-# 2026-08-05. This is the anchor every live reading is measured from.
-ANCHOR_MONTH = "2026-06"
-ANCHOR_DIVISION_INDICES: dict[str, float] = {
+DIVISION_HISTORY_PATH = Path(__file__).parent.parent / "data" / "division_indices.json"
+
+
+def load_anchor() -> tuple[str, dict[str, float], float]:
+    """
+    Anchor on the LATEST release we have parsed, not a hardcoded month.
+
+    A hardcoded anchor goes stale the moment MOSPI publishes again, and does so
+    silently — the index would keep reporting movement against a month that is
+    no longer the reference. Reading the newest entry from the parsed history
+    means the anchor advances on its own as releases are ingested.
+
+    Falls back to the compiled-in June 2026 figures if the history file is
+    missing or unreadable, so the app still starts.
+    """
+    try:
+        payload = json.loads(DIVISION_HISTORY_PATH.read_text())
+        months = payload.get("months") or {}
+        latest = max(months)
+        entry = months[latest]
+        divisions = {k: float(v) for k, v in entry["divisions"].items()}
+        headline = float(entry["headline_index"])
+        if divisions and headline > 0:
+            return latest, divisions, headline
+    except (OSError, json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        log.warning(f"live_index: cannot load division history ({exc}); using fallback anchor")
+    return _FALLBACK_MONTH, dict(_FALLBACK_DIVISIONS), _FALLBACK_HEADLINE
+
+
+# Compiled-in fallback: MOSPI CPI release for June 2026, Annexure I.
+_FALLBACK_MONTH = "2026-06"
+_FALLBACK_DIVISIONS: dict[str, float] = {
     "food_and_beverages": 106.98,
     "paan_tobacco_and_intoxicants": 107.94,
     "clothing_and_footwear": 107.97,
@@ -56,7 +88,9 @@ ANCHOR_DIVISION_INDICES: dict[str, float] = {
     "restaurants_and_accommodation": 111.46,
     "personal_care_and_misc": 124.71,
 }
-ANCHOR_HEADLINE_INDEX = 107.00          # All India, same release
+_FALLBACK_HEADLINE = 107.00             # All India, same release
+
+ANCHOR_MONTH, ANCHOR_DIVISION_INDICES, ANCHOR_HEADLINE_INDEX = load_anchor()
 
 # What fraction of each division our price signal actually represents.
 #
