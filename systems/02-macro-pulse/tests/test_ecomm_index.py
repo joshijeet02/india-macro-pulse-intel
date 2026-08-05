@@ -2,10 +2,10 @@
 Characterisation tests for engine/ecomm_index.compute_index.
 
 These pin CURRENT behaviour so the Task 7 refactor can be proven
-behaviour-preserving. Two of these encode known defects (documented in
-docs/PRD-2026-08-cpi-nowcast-index-rebuild.md) and are expected to be
-UPDATED — deliberately, with a commit that says so — when those defects
-are fixed in a later phase. They are not aspirational tests.
+behaviour-preserving. One of these (test_KNOWN_DEFECT_...) encodes a known
+defect documented in docs/PRD-2026-08-cpi-nowcast-index-rebuild.md and is
+expected to be UPDATED — deliberately, with a commit that says so — when
+that defect is fixed in a later phase. It is not an aspirational test.
 """
 import pytest
 
@@ -91,3 +91,52 @@ def test_group_summary_rolls_up_by_cpi_group():
     assert groups["Cereals"]["avg_pct_change"] == pytest.approx(10.0, abs=0.01)
     assert groups["Vegetables"]["avg_pct_change"] == pytest.approx(20.0, abs=0.01)
     assert groups["Cereals"]["item_count"] == 2
+
+
+def test_group_summary_weights_items_within_a_group():
+    """
+    Two Cereals items with DIFFERENT weights and DIFFERENT changes, so the
+    weighted mean is distinguishable from a plain mean. rice (wt 14.0) +10%,
+    atta (wt 12.3) +20% -> (14.0*10 + 12.3*20) / 26.3 = 14.68, not 15.0.
+    """
+    base = {"rice": 100.0, "atta": 100.0}
+    result = compute_index(_rows({"rice": 110.0, "atta": 120.0}), base)
+    groups = {g["cpi_group"]: g for g in group_summary(result["components"])}
+    assert groups["Cereals"]["avg_pct_change"] == pytest.approx(14.68, abs=0.01)
+
+
+def test_component_dict_has_expected_shape_and_values():
+    result = compute_index(
+        [{"item_id": "rice", "price": 110.0, "price_per_kg": None}],
+        {"rice": 100.0},
+    )
+    assert result["components"] == [
+        {
+            "item_id": "rice",
+            "name": "Rice",
+            "cpi_group": "Cereals",
+            "weight": 14.0,
+            "current_price": 110.0,
+            "base_price": 100.0,
+            "price_ratio": 1.1,
+            "pct_change": 10.0,
+        }
+    ]
+
+
+def test_components_sorted_by_cpi_group_and_groups_by_change_desc():
+    base = {"rice": 100.0, "atta": 100.0, "onion": 100.0}
+    result = compute_index(
+        _rows({"rice": 110.0, "atta": 110.0, "onion": 120.0}), base
+    )
+    assert [c["cpi_group"] for c in result["components"]] == [
+        "Cereals", "Cereals", "Vegetables"
+    ]
+    # group_summary sorts by avg_pct_change descending
+    assert [g["cpi_group"] for g in group_summary(result["components"])] == [
+        "Vegetables", "Cereals"
+    ]
+
+
+def test_group_summary_of_empty_components_is_empty():
+    assert group_summary([]) == []
