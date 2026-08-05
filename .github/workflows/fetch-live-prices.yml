@@ -50,13 +50,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Amazon blocks headless Chromium from cloud IP ranges, so the grocery
-      # fetcher will usually return nothing here. Bullion and FX are plain HTTP
-      # and work fine. The run is still worth doing daily for those, and the
-      # index reports its own coverage either way.
+      # The path must match what scrapers/amazon.py forces at runtime. It
+      # hard-codes /tmp/pw-browsers because Streamlit Cloud's home directory is
+      # not writable; without the same value here, `playwright install` puts the
+      # browser in ~/.cache and the scraper then looks somewhere else and finds
+      # nothing. That is exactly what happened on the first run: "Executable
+      # doesn't exist at /tmp/pw-browsers/..." — the grocery basket was silently
+      # dropped from every snapshot while the job reported success.
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
-        continue-on-error: true
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: /tmp/pw-browsers
 
       - name: Fetch prices
         id: fetch
@@ -74,6 +78,7 @@ jobs:
           echo "exit code: $rc"
         env:
           PYTHONPATH: ${{ github.workspace }}/systems/02-macro-pulse
+          PLAYWRIGHT_BROWSERS_PATH: /tmp/pw-browsers
 
       - name: Commit snapshot
         if: steps.fetch.outputs.status == 'appended'

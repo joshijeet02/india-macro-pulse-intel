@@ -32,6 +32,51 @@ def pretty_month(reference_month: str) -> str:
         return reference_month
 
 
+def _render_reconciliation(nowcast, latest):
+    """
+    State the relationship between this number and the one at the top of the
+    page, before showing this number at all.
+
+    Two estimates of the same month, both large and blue, with nothing said
+    about why they differ, reads as a system that cannot decide what it thinks.
+    The panel above is a price calculation; this is an extrapolation of the
+    published series. They are different instruments and they are allowed to
+    disagree — but the disagreement has to be named and sized, and the page has
+    to say which number it stands behind.
+    """
+    headline = st.session_state.get("headline_estimate") or {}
+    same_month = headline.get("month") == nowcast.reference_month
+    measured = headline.get("value")
+
+    if not same_month or measured is None:
+        st.info(
+            f"**Model extrapolation of the published series: "
+            f"{nowcast.point}% for {pretty_month(nowcast.reference_month)}.** This is "
+            f"a cross-check on the price-based estimate at the top of the page, not "
+            f"the headline. It reads no prices; it extends the official history."
+        )
+        return
+
+    gap = nowcast.point - measured
+    st.info(
+        f"**Two numbers, two methods — {pretty_month(nowcast.reference_month)}.**\n\n"
+        f"- **{measured}% — the page headline.** Arithmetic on prices: measured "
+        f"month-on-month moves where we have them, official CPI weights, the "
+        f"already-published base month. It reads no history beyond that base.\n"
+        f"- **{nowcast.point}% — this panel.** An extrapolation of the published "
+        f"series. It reads no prices at all.\n\n"
+        f"They differ by **{abs(gap):.2f}pp**, with the model "
+        f"{'higher' if gap > 0 else 'lower'}. That gap is information: the model is "
+        f"picking up momentum in the official series that current prices have not "
+        f"confirmed"
+        + (", and it is currently carrying a regime-shift adjustment on top (below)"
+           if nowcast.shock is not None and nowcast.shock.is_active else "")
+        + f". **The page stands behind {measured}%**, because it is computed from "
+        f"observed prices rather than fitted to past prints. Treat {nowcast.point}% "
+        f"as the upside case, not as a second forecast."
+    )
+
+
 def render_nowcast_header():
     history = CPIStore().get_history(months=240)
     if not history:
@@ -48,31 +93,20 @@ def render_nowcast_header():
         )
         return
 
-    left, right = st.columns([2, 3])
+    _render_reconciliation(nowcast, latest)
 
-    with left:
-        st.metric(
-            f"Estimated CPI · {pretty_month(nowcast.reference_month)}",
-            f"{nowcast.point}%",
-            delta=f"{nowcast.point - latest['headline_yoy']:+.2f}pp vs last print",
-            help="Model estimate of the next official print — not an official figure.",
-        )
-        st.caption(f"Likely range **{nowcast.low}% – {nowcast.high}%**")
-
-    with right:
-        verdict = (
-            "beats the naive benchmark"
-            if nowcast.beats_benchmark
-            else "does NOT beat the naive benchmark"
-        )
-        st.markdown(
-            f"**This is an estimate, not an official figure.** Last published: "
-            f"{pretty_month(latest['reference_month'])} at {latest['headline_yoy']}%.\n\n"
-            f"Method `{nowcast.model}`, chosen by walk-forward test on "
-            f"{nowcast.n_observations} months — it {verdict} of assuming next month "
-            f"repeats this month. The ± band is the error it actually made on data "
-            f"it had not seen."
-        )
+    verdict = (
+        "beats the naive benchmark"
+        if nowcast.beats_benchmark
+        else "does NOT beat the naive benchmark"
+    )
+    st.markdown(
+        f"Method `{nowcast.model}`, chosen by walk-forward test on "
+        f"{nowcast.n_observations} months — it {verdict} of assuming next month "
+        f"repeats this month. Its band, {nowcast.low}%–{nowcast.high}%, is the error "
+        f"it actually made on data it had not seen. Last published: "
+        f"{pretty_month(latest['reference_month'])} at {latest['headline_yoy']}%."
+    )
 
     if not nowcast.beats_benchmark:
         st.warning(

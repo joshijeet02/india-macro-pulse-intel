@@ -139,6 +139,14 @@ def render_live_index():
         mom_value = comp.headline_mom
         estimate = live.yoy_for_mom(mom_value, base_level)
 
+        # Published so the statistical panel below can reconcile against this
+        # number instead of printing a second, unexplained estimate beside it.
+        # Two different figures for the same month with no stated relationship
+        # reads as a system that does not know its own answer.
+        st.session_state["headline_estimate"] = {
+            "value": estimate, "month": target, "basis": mom_basis,
+        }
+
         a, b, c = st.columns(3)
         a.metric(
             f"{pretty_month(target)} CPI — estimate",
