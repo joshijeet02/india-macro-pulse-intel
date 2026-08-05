@@ -1,0 +1,13 @@
+{
+  "_comment": "Month-over-month moves measured from back-dated price history, written by scripts/fetch_live_prices.py. The app READS this and never fetches it: an earlier version computed it on page load and a single slow FX call blocked the whole render for up to a minute.",
+  "measured": {
+    "2026-06->2026-07": {
+      "from_month": "2026-06",
+      "to_month": "2026-07",
+      "from_inr_per_gram": 11019.81,
+      "to_inr_per_gram": 10687.07,
+      "mom_pct": -3.019,
+      "measured_at": "2026-08-05 19:05:02"
+    }
+  }
+}

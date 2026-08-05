@@ -247,3 +247,72 @@ def compute_live_index(
         observed_weight=round(observed_weight, 2),
         readings=readings,
     )
+
+
+@dataclass(frozen=True)
+class MomComposition:
+    """
+    How the assumed month-on-month splits between measured and assumed.
+
+    The distinction is the product. A number where every component is assumed
+    is a forecast wearing a measurement's clothes; being able to say "this much
+    of it we observed, this much we inferred, here is which" is what makes it
+    defensible to someone who will ask.
+    """
+    headline_mom: float
+    measured_weight: float          # % of basket whose move was observed
+    assumed_weight: float           # % whose move was inferred
+    measured: list[tuple[str, float, float]]   # (division, weight, measured mom %)
+    assumed_mom: float              # the rate applied to everything unmeasured
+
+    @property
+    def measured_share(self) -> float:
+        total = self.measured_weight + self.assumed_weight
+        return 0.0 if total <= 0 else round(self.measured_weight / total * 100, 1)
+
+
+def compose_mom(
+    assumed_mom: float,
+    measured_moms: Optional[Mapping[str, float]] = None,
+    weights: Optional[Mapping[str, float]] = None,
+) -> MomComposition:
+    """
+    Build the headline month-on-month from measured parts plus an assumption.
+
+    `measured_moms` maps a division key to an OBSERVED month-over-month move.
+    Only the tracked share of that division is treated as measured — the rest
+    of the division falls back to the assumption, because we did not observe it.
+
+    Everything unmeasured moves at `assumed_mom`. That keeps the construction
+    honest in both directions: measured data genuinely displaces the assumption
+    where it exists, and nothing is quietly assumed to be zero where it does not.
+    """
+    measured_moms = dict(measured_moms or {})
+    division_weights = dict(weights if weights is not None else CPI_2024_DIVISIONS)
+
+    weighted_total = 0.0
+    measured_weight = 0.0
+    detail: list[tuple[str, float, float]] = []
+
+    for key, weight in division_weights.items():
+        share = TRACKED_SHARE.get(key, DEFAULT_TRACKED_SHARE)
+        observed = measured_moms.get(key)
+        if observed is None:
+            weighted_total += weight * assumed_mom
+            continue
+        # Only the tracked slice is observed; the remainder is not.
+        observed_weight = weight * share
+        weighted_total += observed_weight * observed + (weight - observed_weight) * assumed_mom
+        measured_weight += observed_weight
+        detail.append((key, round(observed_weight, 3), observed))
+
+    total_weight = sum(division_weights.values())
+    headline = weighted_total / total_weight if total_weight else assumed_mom
+
+    return MomComposition(
+        headline_mom=round(headline, 4),
+        measured_weight=round(measured_weight, 3),
+        assumed_weight=round(total_weight - measured_weight, 3),
+        measured=sorted(detail, key=lambda d: -d[1]),
+        assumed_mom=assumed_mom,
+    )

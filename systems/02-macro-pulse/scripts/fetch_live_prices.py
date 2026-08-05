@@ -62,6 +62,29 @@ def main() -> int:
     snapshots = load_snapshots()
     log.info(f"appended snapshot #{len(snapshots)}")
 
+    # Measure the bullion move INTO the month we are estimating. Back-dated,
+    # because gold has a public daily history and our own snapshots do not
+    # reach back that far. Done here rather than in the app so no page load
+    # ever waits on it.
+    try:
+        from engine.live_index import ANCHOR_MONTH as anchor
+        from scrapers.metals_history import measured_bullion_mom, save_measured
+
+        year, month = (int(x) for x in anchor.split("-"))
+        target = f"{year + 1:04d}-01" if month == 12 else f"{year:04d}-{month + 1:02d}"
+        measured = measured_bullion_mom(anchor, target)
+        if measured:
+            save_measured(measured)
+            log.info(
+                f"measured bullion {anchor}->{target}: {measured['mom_pct']:+.3f}% "
+                f"(Rs {measured['from_inr_per_gram']:,.2f} -> "
+                f"{measured['to_inr_per_gram']:,.2f} per gram)"
+            )
+        else:
+            log.warning("bullion move could not be measured this run")
+    except Exception as exc:
+        log.warning(f"bullion measurement skipped: {exc}")
+
     # Report what the chain now says, so the workflow log carries the reading
     # rather than only the fact that something was written.
     relatives = chained_relatives(snapshots)

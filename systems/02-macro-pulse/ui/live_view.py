@@ -22,7 +22,7 @@ import streamlit as st
 from engine.cpi_levels import (
     ANCHOR_LEVELS, CONSENSUS, build_levels, central_mom, mom_series,
 )
-from engine.live_index import compute_live_index
+from engine.live_index import compose_mom, compute_live_index
 from engine.live_sources import (
     fetch_and_measure, load_snapshots, reference_prices, unmeasured_gap,
 )
@@ -116,9 +116,27 @@ def render_live_index():
     }))
     central = central_mom(moms, target)
 
+    # Measured where measurable. Bullion has a public daily price history, so
+    # its move INTO the target month is an observation, not an assumption —
+    # even though our own snapshot store began after that month ended.
+    measured_moms: dict[str, float] = {}
+    bullion = None
+    # READ, never fetch. Computing this on page load meant one slow FX call
+    # blocked the entire render for up to a minute — the same mistake as
+    # installing a browser at import time. The daily job writes it; we read it.
+    try:
+        from scrapers.metals_history import cached_bullion_mom
+        bullion = cached_bullion_mom(live.anchor_month, target) or {}
+        if bullion.get("mom_pct") is not None:
+            measured_moms["personal_care_and_misc"] = bullion["mom_pct"]
+    except Exception:
+        bullion = {}
+
     if base_level:
         flat = live.yoy_for_mom(0.0, base_level)
-        mom_value, mom_basis = central if central else (0.0, "no basis available")
+        assumed, mom_basis = central if central else (0.0, "no basis available")
+        comp = compose_mom(assumed_mom=assumed, measured_moms=measured_moms)
+        mom_value = comp.headline_mom
         estimate = live.yoy_for_mom(mom_value, base_level)
 
         a, b, c = st.columns(3)
@@ -134,10 +152,20 @@ def render_live_index():
                 f"{last_print}%",
                 help="The last official print, for comparison.",
             )
+        # NOT the live snapshot chain. That chain spans only the days since we
+        # started watching, so it reads near zero and sat next to a measured
+        # -3% bullion move looking like a contradiction. What matters here is
+        # how much of the month's basket is observation rather than assumption.
         c.metric(
-            "Prices since that print",
-            f"{live.pct_change_since_anchor:+.2f}%",
-            help="Month-on-month movement in the parts of the basket we can price.",
+            "Measured, not assumed",
+            f"{comp.measured_weight:.1f}% of basket",
+            delta=(f"{estimate - live.yoy_for_mom(assumed, base_level):+.2f}pp"
+                   if comp.measured_weight else None),
+            help=(
+                "Share of the CPI basket whose month-on-month move we observed from "
+                "actual prices rather than inferred. The delta is how far that "
+                "observation moved the estimate."
+            ),
         )
 
         street = CONSENSUS.get(target)
@@ -158,6 +186,21 @@ def render_live_index():
                 f"{street['note']} _Source: {street['source']}._"
             )
 
+        if measured_moms and bullion:
+            st.markdown(
+                f"**Measured, not assumed:** gold and silver averaged "
+                f"₹{bullion['from_inr_per_gram']:,.0f}/g across "
+                f"{pretty_month(live.anchor_month)} and "
+                f"₹{bullion['to_inr_per_gram']:,.0f}/g across {pretty_month(target)} — "
+                f"**{bullion['mom_pct']:+.2f}%**, observed from daily prices. That covers "
+                f"{comp.measured_weight:.2f}% of the basket and pulls the estimate from "
+                f"{live.yoy_for_mom(assumed, base_level)}% to **{estimate}%**.\n\n"
+                f"The grocery basket contributes **nothing to this print** and will not: "
+                f"Amazon publishes no price history, and {pretty_month(target)} ended "
+                f"before we began observing. It starts contributing to the first month "
+                f"we watch from beginning to end."
+            )
+
         if last_print is not None:
             needed = live.mom_needed_for(last_print, base_level)
             direction = "below" if estimate < last_print else "above"
@@ -170,7 +213,9 @@ def render_live_index():
                 f"to hold {last_print}%**. Flat prices print lower. That base is already "
                 f"published and cannot change — it is the most predictable part of the "
                 f"next release.\n\n"
-                f"On the other side, we assume **{mom_value:+.2f}% month-on-month** "
+                f"On the other side, we put **{mom_value:+.2f}% month-on-month** on the "
+                f"month — {comp.measured_weight:.2f}% of the basket measured, the "
+                f"remaining {comp.assumed_weight:.1f}% assumed at {assumed:+.2f}% "
                 f"({mom_basis}). Flat prices would print {flat}%, but flat is not a "
                 f"neutral guess: over 14 months it was the worst of five estimators "
                 f"tested, and recent months ran +0.26%, +0.75% and +1.04%."
