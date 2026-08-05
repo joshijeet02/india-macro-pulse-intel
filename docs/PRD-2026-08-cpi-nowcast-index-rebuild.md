@@ -15,7 +15,11 @@ The "Proprietary Pulse" tab promises a real-time proprietary grocery price index
 
 **And where it does compute, it computes the wrong number.**
 
-- **Formula mismatch.** `compute_index()` uses a weighted *arithmetic* mean of price relatives. MOSPI CPI 2024 uses **Jevons** (geometric mean) at the elementary level and **Young/modified Laspeyres** at higher levels. By Jensen's inequality the arithmetic mean is always ≥ the geometric mean, so our index carries a systematic upward bias against the exact series it claims to anticipate, widening as price dispersion widens.
+- **No elementary index.** MOSPI compiles in two stages: **Jevons** (geometric mean of price relatives) *within* an item across its price quotes, then **Young/modified Laspeyres** *across* items using expenditure weights.
+
+  Our aggregation stage already matches — `compute_index()`'s weighted arithmetic mean of relatives **is** the Young form, and reproduces it exactly. The defect is the stage below it: we have no elementary index at all. Each item is collapsed to a single median-picked price per run, and the product picked can differ between runs.
+
+  So this is not an arithmetic-vs-geometric bias, and an earlier draft of this PRD was wrong to claim one. With a single quote per item, Jevons is trivially that quote's own ratio. The real defect is **structural**: an elementary index needs a stable set of quotes to average over, which means Jevons and product identity are one problem, not two.
 - **Stale weights.** `engine/ecomm_basket.py` weights "mirror India's 2012=100 CPI food sub-group shares." CPI rebased to **2024=100 effective January 2026**, and Food & Beverages fell from **45.86% → 36.75%** under HCES 2023-24 and COICOP 2018. The basket is weighted to a retired consumption pattern.
 - **Composition leakage.** `compute_index()` renormalises over whatever weight matched this run. With **every price literally unchanged**, dropping one item (rice, weight 14.0) moves the index **+1.40 points** — pure composition artifact, several times larger than the ~0.5pp CPI food moves the index exists to detect.
 - **No product identity.** Each run re-searches Amazon and picks a fresh median candidate, so week 2 can measure a different SKU than week 1. Product substitution is indistinguishable from price change.
@@ -160,13 +164,18 @@ Changed: `ecomm_index.py` (delegates math), `outlier.py` (repair not drop; prote
 
 ## 6. Features
 
-### F1 — Formula correctness (P0)
+### F1 — Two-stage index compilation (P0)
 
-Replace the weighted arithmetic mean of relatives with **Jevons at elementary level** (geometric mean across an item's candidate quotes) and **Young/modified Laspeyres at aggregation**, matching MOSPI exactly.
+Give the index the elementary stage it currently lacks, matching MOSPI's structure:
 
-Pure functions, no network, fully unit-testable against hand-computed examples. This is the cheapest accuracy gain available — it removes a known one-directional bias for zero new data.
+1. **Jevons elementary** — geometric mean of price relatives across an item's tracked quotes.
+2. **Young aggregation** — weighted arithmetic mean of elementary indices. Already correct in behaviour; extracted into a named, tested function so it is no longer implicit.
 
-**Done when:** `index_formula.py` reproduces hand-computed Jevons and Young values to 6dp; `compute_index()` delegates to it; existing tests still pass.
+Pure functions, no network, unit-testable against hand-computed values.
+
+**Coupling to note:** Jevons is only meaningful over a *stable* quote set. If the tracked products churn between runs, the geometric mean averages relatives of different goods and is worse than useless. F1's elementary stage therefore lands behind product identity (F8), which is why F8 is promoted out of P1 in the revised sequencing. Until stable quotes exist, `jevons_elementary()` over a single quote degenerates safely to that quote's own ratio — correct, just not yet adding value.
+
+**Done when:** `index_formula.py` reproduces hand-computed Jevons and Young values to 6dp; `compute_index()` delegates to it; existing tests still pass unchanged, proving the aggregation refactor is behaviour-preserving.
 
 ### F2 — Official CPI 2024 weights (P0)
 
@@ -216,7 +225,7 @@ Walk-forward, out-of-sample: fit to month M, predict M+1, roll.
 
 **Done when:** `backtest.py` emits a metrics table for current vs revised methodology, so F1–F2's effect is measured rather than asserted.
 
-### F8 — Amazon structural fixes (P1)
+### F8 — Amazon structural fixes (product identity P0, remainder P1)
 
 - **Product identity:** pin each basket item to a stable product; re-discover only on delisting; log substitutions as discrete events.
 - **Matched-sample chaining:** period-over-period movement computed only across items present in both periods, then chained. Kills the +1.40-point artifact.
@@ -283,7 +292,7 @@ The protocol *is* the product claim. It is specified before any model is fitted,
 | F8 (Amazon structure) | ~3 hr | Product identity is the hard part. |
 | F9 (UI) | ~2 hr | |
 
-**Recommended sequencing — today:** F10 → F1 → F2 → F3 (no network dependency, immediately measurable, ~4.5 hr). **Next:** F4 → F5 → F7, which is where an accuracy number first becomes provable. **Then:** F6 → F8 → F9.
+**Recommended sequencing — today:** F10 → F1 → F2 → F3 (no network dependency, immediately measurable, ~4.5 hr). **Next:** F4 → F5 → F7, which is where an accuracy number first becomes provable. **Then:** F8 (product identity first, since F1's elementary stage depends on it) → F6 → F9.
 
 ## 10. Definition of done
 
