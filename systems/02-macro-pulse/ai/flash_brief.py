@@ -37,15 +37,30 @@ def generate_cpi_brief(
     )
     surprise = compute_surprise(actual=headline_yoy, consensus=consensus, indicator="CPI")
 
+    # Under CPI 2024=100 there is no "Fuel & Light" division, so fuel_contrib
+    # is legitimately None for any release from Jan 2026. Formatting it with
+    # :+.2f would raise TypeError and break brief generation entirely.
+    if dec["fuel_contrib"] is None:
+        fuel_line = (
+            "- Fuel: not separately measured "
+            "(no Fuel & Light division under CPI 2024=100)"
+        )
+    else:
+        fuel_line = f"- Fuel: {dec['fuel_contrib']:+.2f}pp (fuel YoY {fuel_yoy}%)"
+
+    core_label = (
+        "Core (ex-food)" if dec.get("core_definition") == "ex-food" else "Core"
+    )
+
     prompt = f"""CPI Flash Brief — {reference_month}
 
 HEADLINE: {headline_yoy}% YoY ({surprise.label})
 CONSENSUS: {consensus}%
 
-DECOMPOSITION (contributions to headline, pp):
+DECOMPOSITION (contributions to headline, pp, base {dec['base_year']}=100):
 - Food: {dec['food_contrib']:+.2f}pp (food YoY {food_yoy}%)
-- Fuel: {dec['fuel_contrib']:+.2f}pp (fuel YoY {fuel_yoy}%)
-- Core: {dec['core_contrib']:+.2f}pp (core YoY {dec['core_yoy']}%)
+{fuel_line}
+- {core_label}: {dec['core_contrib']:+.2f}pp (core YoY {dec['core_yoy']}%)
 
 Write the flash brief. Para 1: headline + surprise (≤50 words). \
 Para 2: component story + MPC read (≤80 words). \

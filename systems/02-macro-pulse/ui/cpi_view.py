@@ -8,6 +8,7 @@ from engine.basket_weights import (
     CPI_2012_FUEL_WEIGHT,
     CPI_FOOD_WEIGHT,
     CPI_NONFOOD_WEIGHT,
+    base_year_for_month,
 )
 from engine.cross_ref import cpi_context_for_print
 from ui._mode import assessment_text, render_glossary_expander
@@ -18,6 +19,44 @@ _TONE_FN = {
     "warning": st.warning,
     "error":   st.error,
 }
+
+
+def base_year_of(decomposition: dict) -> str:
+    """
+    Determine which weight base a decomposition row belongs to.
+
+    `decompose_cpi` returns a `base_year` key, but `CPIStore` does not persist
+    it — a row read back from the database carries only `reference_month`. So
+    trusting `base_year` alone made every *stored* 2026 release fall back to
+    "2012" and display 45.86% beside contributions computed on 36.753%.
+    Deriving from the month when the key is absent makes this correct for both
+    a live decomposition and a database round-trip.
+    """
+    base_year = decomposition.get("base_year")
+    if base_year:
+        return base_year
+    reference_month = decomposition.get("reference_month")
+    if reference_month:
+        try:
+            return base_year_for_month(reference_month)
+        except ValueError:
+            pass
+    return "2012"
+
+
+def core_definition_of(decomposition: dict) -> str:
+    """
+    Determine what "core" excludes for a decomposition row.
+
+    Like `base_year`, `core_definition` is not persisted, so it is re-derived
+    from the base era and the presence of a fuel contribution.
+    """
+    core_definition = decomposition.get("core_definition")
+    if core_definition:
+        return core_definition
+    if base_year_of(decomposition) == "2024" or decomposition.get("fuel_contrib") is None:
+        return "ex-food"
+    return "ex-food-and-fuel"
 
 
 def contribution_rows(decomposition: dict) -> list[tuple[str, float]]:
@@ -32,7 +71,7 @@ def contribution_rows(decomposition: dict) -> list[tuple[str, float]]:
     """
     core_label = (
         "Core (ex-food)"
-        if decomposition.get("core_definition") == "ex-food"
+        if core_definition_of(decomposition) == "ex-food"
         else "Core"
     )
     candidates = [
@@ -52,7 +91,7 @@ def weight_caption(decomposition: dict) -> str:
     weights of 36.753% — stating the wrong number to the reader while the
     engine used the right one. They are now derived from the decomposition.
     """
-    if decomposition.get("base_year") == "2024":
+    if base_year_of(decomposition) == "2024":
         return (
             f"base 2024=100 · Food {CPI_FOOD_WEIGHT * 100:.2f}% · "
             f"Non-food {CPI_NONFOOD_WEIGHT * 100:.2f}%"
@@ -80,10 +119,10 @@ def render_cpi_section():
         latest,
     )
 
-    is_2024_base = latest_dec.get("base_year") == "2024"
+    is_2024_base = base_year_of(latest_dec) == "2024"
     food_weight = CPI_FOOD_WEIGHT if is_2024_base else CPI_2012_FOOD_WEIGHT
     core_excludes = (
-        "ex-food" if latest_dec.get("core_definition") == "ex-food"
+        "ex-food" if core_definition_of(latest_dec) == "ex-food"
         else "ex-food & fuel"
     )
 

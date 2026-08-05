@@ -62,3 +62,48 @@ def test_weight_caption_states_2012_weights_for_pre_2026_release():
 def test_weight_caption_defaults_to_2012_when_base_absent():
     from ui.cpi_view import weight_caption
     assert "base 2012=100" in weight_caption({})
+
+
+def test_base_year_survives_database_round_trip(tmp_path, monkeypatch):
+    """
+    Regression guard: decompose_cpi returns base_year, but CPIStore does not
+    persist it. Reading a stored 2026 release back therefore fell through to
+    the 2012 branch and displayed "Food 45.86%" beside contributions computed
+    on 36.753%. The base era must be recoverable from reference_month alone.
+    """
+    import db.schema, db.store
+    from ui.cpi_view import base_year_of, weight_caption
+
+    db_path = tmp_path / "roundtrip.db"
+    monkeypatch.setattr(db.schema, "DB_PATH", db_path)
+    monkeypatch.setattr(db.store, "DB_PATH", db_path)
+    db.schema.init_db()
+
+    dec = decompose_cpi(4.38, 5.32, None, reference_month="2026-05")
+    store = db.store.CPIStore()
+    store.upsert({
+        "release_date": "2026-07-13",
+        "reference_month": "2026-05",
+        "headline_yoy": 4.38,
+        "food_yoy": 5.32,
+        "fuel_yoy": None,
+        "core_yoy": dec["core_yoy"],
+        "food_contrib": dec["food_contrib"],
+        "fuel_contrib": dec["fuel_contrib"],
+        "core_contrib": dec["core_contrib"],
+        "consensus_forecast": None,
+    })
+    row = store.get_history(months=12)[-1]
+
+    assert "base_year" not in row          # confirms the field really is not persisted
+    assert base_year_of(row) == "2024"     # ...yet the base era is still recovered
+    assert "36.75%" in weight_caption(row)
+    assert "45.86%" not in weight_caption(row)
+
+
+def test_core_definition_recovered_for_stored_row():
+    from ui.cpi_view import core_definition_of
+    stored = {"reference_month": "2026-05", "fuel_contrib": None}
+    assert core_definition_of(stored) == "ex-food"
+    stored_2012 = {"reference_month": "2025-12", "fuel_contrib": 0.21}
+    assert core_definition_of(stored_2012) == "ex-food-and-fuel"
