@@ -3,6 +3,12 @@ import pandas as pd
 from db.store import CPIStore
 from engine.surprise_calc import compute_surprise
 from engine.assessments import assess_cpi
+from engine.basket_weights import (
+    CPI_2012_FOOD_WEIGHT,
+    CPI_2012_FUEL_WEIGHT,
+    CPI_FOOD_WEIGHT,
+    CPI_NONFOOD_WEIGHT,
+)
 from engine.cross_ref import cpi_context_for_print
 from ui._mode import assessment_text, render_glossary_expander
 
@@ -37,6 +43,27 @@ def contribution_rows(decomposition: dict) -> list[tuple[str, float]]:
     return [(name, value) for name, value in candidates if value is not None]
 
 
+def weight_caption(decomposition: dict) -> str:
+    """
+    Describe the weight base a decomposition was computed on.
+
+    These figures were previously hardcoded to the 2012 series, so the app
+    displayed "Food 45.86%" for releases actually compiled on 2024=100
+    weights of 36.753% — stating the wrong number to the reader while the
+    engine used the right one. They are now derived from the decomposition.
+    """
+    if decomposition.get("base_year") == "2024":
+        return (
+            f"base 2024=100 · Food {CPI_FOOD_WEIGHT * 100:.2f}% · "
+            f"Non-food {CPI_NONFOOD_WEIGHT * 100:.2f}%"
+        )
+    core_weight = 1.0 - CPI_2012_FOOD_WEIGHT - CPI_2012_FUEL_WEIGHT
+    return (
+        f"base 2012=100 · Food {CPI_2012_FOOD_WEIGHT * 100:.2f}% · "
+        f"Fuel {CPI_2012_FUEL_WEIGHT * 100:.2f}% · Core {core_weight * 100:.2f}%"
+    )
+
+
 def render_cpi_section():
     store = CPIStore()
     history = store.get_history(months=12)
@@ -46,29 +73,43 @@ def render_cpi_section():
         return
 
     latest = history[-1]
-    # Component decomposition requires 2012=100 base weights.
-    # India switched to 2024=100 from Jan 2026 — use latest month that still has components.
+    # Fall back to the most recent month that has components, in case a
+    # release arrives with headline only and no food breakdown.
     latest_dec = next(
         (r for r in reversed(history) if r.get("core_yoy") is not None),
         latest,
     )
 
+    is_2024_base = latest_dec.get("base_year") == "2024"
+    food_weight = CPI_FOOD_WEIGHT if is_2024_base else CPI_2012_FOOD_WEIGHT
+    core_excludes = (
+        "ex-food" if latest_dec.get("core_definition") == "ex-food"
+        else "ex-food & fuel"
+    )
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Headline CPI", f"{latest['headline_yoy']}%", help="YoY %")
     col2.metric("Core Inflation", f"{latest_dec['core_yoy']}%",
-                help="Residual ex-food & fuel — key MPC signal")
+                help=f"Residual {core_excludes} — key MPC signal")
     col3.metric("Food Inflation", f"{latest_dec['food_yoy']}%",
-                help="Food & Beverages (weight: 45.9%)")
-    col4.metric("Fuel Inflation", f"{latest_dec['fuel_yoy']}%",
-                help="Fuel & Light (weight: 6.8%)")
+                help=f"Food & Beverages (weight: {food_weight * 100:.1f}%)")
+    # Under 2024=100 there is no Fuel & Light division, so fuel_yoy is
+    # legitimately absent — show "n/a" rather than the string "None%".
+    if latest_dec.get("fuel_yoy") is None:
+        col4.metric("Fuel Inflation", "n/a",
+                    help="No 'Fuel & Light' division under 2024=100 — folded "
+                         "into Housing, water, electricity, gas and other fuels")
+    else:
+        col4.metric("Fuel Inflation", f"{latest_dec['fuel_yoy']}%",
+                    help=f"Fuel & Light (weight: {CPI_2012_FUEL_WEIGHT * 100:.1f}%)")
 
     comp_note = (
         f"Reference: {latest['reference_month']}"
         if latest_dec is latest
-        else f"Headline: {latest['reference_month']} · Components: {latest_dec['reference_month']} "
-             f"(base 2024=100 from Jan 2026 — old weights no longer apply)"
+        else f"Headline: {latest['reference_month']} · "
+             f"Components: {latest_dec['reference_month']}"
     )
-    st.caption(comp_note + " · Food 45.86% · Fuel 6.84% · Core 47.30%")
+    st.caption(f"{comp_note} · {weight_caption(latest_dec)}")
     render_glossary_expander(
         ["Headline CPI", "Core CPI", "Food Inflation", "Fuel Inflation",
          "RBI Target", "Real Rates", "Disinflation", "Base Effect"],

@@ -36,3 +36,29 @@ def test_all_components_missing_yields_no_rows():
 
 def test_empty_decomposition_is_handled():
     assert contribution_rows({}) == []
+
+
+def test_weight_caption_states_2024_weights_for_2026_release():
+    """
+    Regression guard: the caption previously hardcoded "Food 45.86%" for every
+    release, telling the reader the wrong number for 2026 data while the
+    engine correctly used 36.753%.
+    """
+    from ui.cpi_view import weight_caption
+    caption = weight_caption(decompose_cpi(4.38, 5.32, None, reference_month="2026-05"))
+    assert "36.75%" in caption
+    assert "45.86%" not in caption
+    assert "base 2024=100" in caption
+
+
+def test_weight_caption_states_2012_weights_for_pre_2026_release():
+    from ui.cpi_view import weight_caption
+    caption = weight_caption(decompose_cpi(5.0, 6.0, 3.0, reference_month="2025-12"))
+    assert "45.86%" in caption
+    assert "6.84%" in caption
+    assert "base 2012=100" in caption
+
+
+def test_weight_caption_defaults_to_2012_when_base_absent():
+    from ui.cpi_view import weight_caption
+    assert "base 2012=100" in weight_caption({})
