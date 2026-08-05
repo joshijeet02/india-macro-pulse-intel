@@ -65,16 +65,40 @@ def test_sources_agreeing_returns_the_primary():
         assert fuel.fetch_fuel_price("petrol") == pytest.approx(102.12)
 
 
-def test_material_disagreement_is_logged(caplog):
-    """A silently stale mirror yields a number that looks entirely reasonable."""
+def test_fuel_is_currently_single_source_by_design():
+    """
+    A bankbazaar mirror was included as a cross-check but never once parsed —
+    its pages carry no City/Price table. It verified nothing and roughly
+    doubled fetch latency, so it was removed. This asserts the state is
+    deliberate rather than an accident, and will fail if a second source is
+    added without also restoring the disagreement check below.
+    """
+    for kind, urls in fuel.SOURCES.items():
+        assert len(urls) == 1, f"{kind} now has {len(urls)} sources — re-enable cross-checking"
+
+
+def test_disagreement_is_logged_if_a_second_source_returns(caplog):
+    """
+    Kept live against fetch_fuel_price directly: the moment a second source is
+    wired back in, a silently stale mirror must be surfaced rather than quietly
+    averaged away.
+    """
     other = ('<table><tr><th>City</th><th>Price</th></tr>'
              '<tr><td>New Delhi</td><td>&#x20b9;150.00</td></tr></table>')
     pages = iter([TABLE, other])
-    with patch.object(fuel, "_fetch", side_effect=lambda url: next(pages)):
-        with caplog.at_level("WARNING"):
-            got = fuel.fetch_fuel_price("petrol")
+    with patch.dict(fuel.SOURCES, {"petrol": ("http://a", "http://b")}):
+        with patch.object(fuel, "_fetch", side_effect=lambda url: next(pages)):
+            with caplog.at_level("WARNING"):
+                got = fuel.fetch_fuel_price("petrol")
     assert got == pytest.approx(102.12)          # primary still wins
     assert any("disagree" in r.message for r in caplog.records)
+
+
+def test_fetch_timeouts_are_short_enough_for_a_button_press():
+    """A person is waiting on this; a slow source must not stall the refresh."""
+    from scrapers import metals
+    assert fuel.FETCH_TIMEOUT <= 10
+    assert metals.FETCH_TIMEOUT <= 10
 
 
 def test_all_sources_down_returns_none():

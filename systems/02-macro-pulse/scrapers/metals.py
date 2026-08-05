@@ -40,8 +40,12 @@ TROY_OZ_IN_GRAMS = 31.1034768
 # Two FX quotes disagreeing by more than this suggests one is stale or wrong.
 FX_DISAGREEMENT_TOLERANCE = 0.02   # 2%
 
+# Short: a person is waiting on this. A slow provider should fall through to
+# the other one quickly rather than stall the whole refresh.
+FETCH_TIMEOUT = 6
 
-def _get_json(url: str, timeout: int = 15) -> Optional[dict]:
+
+def _get_json(url: str, timeout: int = FETCH_TIMEOUT) -> Optional[dict]:
     try:
         resp = requests.get(url, timeout=timeout, headers={"Accept": "application/json"})
         resp.raise_for_status()

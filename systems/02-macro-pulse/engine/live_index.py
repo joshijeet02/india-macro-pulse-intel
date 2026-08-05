@@ -166,6 +166,27 @@ class LiveIndex:
             return None
         return round((self.index / base_level - 1) * 100, 2)
 
+    def yoy_for_mom(self, mom_pct: float, base_level: float) -> Optional[float]:
+        """
+        What the next print reads if the target month's MoM is `mom_pct`.
+
+        The whole point of showing this: YoY is not just about current prices,
+        it is current prices against a base twelve months old. July 2025
+        recorded +0.82% MoM, the hottest month in the series, so July 2026 must
+        repeat that just to hold its YoY steady. Flat prices this month mean a
+        LOWER print, and that surprises people who have not looked at the base.
+        """
+        if base_level <= 0:
+            return None
+        return round((self.index * (1 + mom_pct / 100) / base_level - 1) * 100, 2)
+
+    def mom_needed_for(self, target_yoy: float, base_level: float) -> Optional[float]:
+        """The MoM the target month needs to print `target_yoy`."""
+        if base_level <= 0 or self.index <= 0:
+            return None
+        required_level = base_level * (1 + target_yoy / 100)
+        return round((required_level / self.index - 1) * 100, 2)
+
 
 def compute_live_index(
     price_relatives: Mapping[str, float],

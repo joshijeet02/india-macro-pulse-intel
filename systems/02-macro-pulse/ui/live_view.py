@@ -1,24 +1,40 @@
 """
-Fetch live prices, recompute the index, show the number.
+Fetch live prices, recompute, and say what the next CPI print will read.
 
-This panel is a calculation, not a forecast. It starts from the division
-indices MOSPI last published, moves the ones we can price by their measured
-price change, carries the rest unchanged, and re-aggregates with the official
-CPI 2024 weights. Every input is either an official figure or an observed
-price ratio.
+Leads with an inflation RATE, not an index level. "107.0" means nothing to a
+reader; "3.53%" is the number MOSPI actually prints and the one a rates analyst
+is trying to anticipate.
+
+The panel answers one question: what will the next release say? Two things
+determine that, and both are shown:
+
+  1. where prices are now, which we measure
+  2. what the base month a year ago did, which is already published and fixed
+
+The second is what catches people out. July 2025 recorded +0.82% MoM, the
+hottest month in the series. July 2026 has to repeat that just to hold its
+year-on-year steady — flat prices this month print LOWER, not the same. So the
+sensitivity table is not decoration: without it the headline looks arbitrary.
 """
 import pandas as pd
 import streamlit as st
 
-from engine.live_index import BASE_YEAR_LEVELS, compute_live_index
+from engine.cpi_levels import ANCHOR_LEVELS
+from engine.live_index import compute_live_index
 from engine.live_sources import (
     fetch_and_measure, load_snapshots, reference_prices, unmeasured_gap,
 )
 
+_MONTHS = {
+    "01": "January", "02": "February", "03": "March", "04": "April",
+    "05": "May", "06": "June", "07": "July", "08": "August",
+    "09": "September", "10": "October", "11": "November", "12": "December",
+}
+
 _PRETTY = {
     "food_and_beverages": "Food and beverages",
     "housing_water_electricity_gas_fuel": "Housing, water, electricity, gas, fuels",
-    "transport": "Transport",
+    "transport": "Transport (incl. petrol/diesel)",
     "clothing_and_footwear": "Clothing and footwear",
     "health": "Health",
     "personal_care_and_misc": "Personal care and misc (incl. gold/silver)",
@@ -31,119 +47,157 @@ _PRETTY = {
 }
 
 
-def _base_level_for(month: str) -> float | None:
-    """Headline index twelve months before `month`, if published."""
-    year, mm = month.split("-")
-    return BASE_YEAR_LEVELS.get(f"{int(year) - 1}-{mm}")
+def pretty_month(reference_month: str) -> str:
+    try:
+        year, month = reference_month.split("-")
+        return f"{_MONTHS[month]} {year}"
+    except (ValueError, KeyError):
+        return reference_month
+
+
+def next_month_after(reference_month: str) -> str:
+    year, month = (int(x) for x in reference_month.split("-"))
+    return f"{year + 1:04d}-01" if month == 12 else f"{year:04d}-{month + 1:02d}"
+
+
+def base_month_for(target_month: str) -> str:
+    """The month twelve earlier — the denominator of a year-on-year rate."""
+    year, month = target_month.split("-")
+    return f"{int(year) - 1}-{month}"
 
 
 def render_live_index():
-    st.subheader("Live CPI index — computed from current prices")
-    st.caption(
-        "Not a forecast. Starts from MOSPI's last published division indices, "
-        "moves the ones we can price by their measured change, carries the rest "
-        "unchanged, and re-aggregates with the official CPI 2024 weights."
-    )
+    st.subheader("What will the next CPI print say?")
 
-    if st.button("Fetch latest prices and recalculate", type="primary"):
-        with st.spinner("Fetching live prices…"):
-            current, relatives, first = fetch_and_measure()
+    snapshots = load_snapshots()
+    col_go, col_opt = st.columns([1, 2])
+    with col_go:
+        go = st.button("Refresh prices", type="primary")
+    with col_opt:
+        include_grocery = st.checkbox(
+            "Also scrape the grocery basket (adds 2–3 minutes)",
+            value=False,
+            help=(
+                "Gold, silver, petrol and diesel are plain HTTP and return in about "
+                "a second. The grocery basket drives a headless browser across 20 "
+                "Amazon searches with backoff, so it is opt-in rather than default."
+            ),
+        )
+
+    if go:
+        label = "Fetching prices…" if not include_grocery else "Fetching — grocery scrape takes 2–3 min…"
+        with st.spinner(label):
+            current, relatives, first = fetch_and_measure(include_slow=include_grocery)
         st.session_state["live_result"] = {
             "current": current, "relatives": relatives, "first": first,
         }
         st.rerun()
 
     result = st.session_state.get("live_result")
-    snapshots = load_snapshots()
+    relatives = result["relatives"] if result else {}
+    live = compute_live_index(relatives)
+
+    target = next_month_after(live.anchor_month)
+    base_level = ANCHOR_LEVELS.get(base_month_for(target))
+    anchor_base = ANCHOR_LEVELS.get(base_month_for(live.anchor_month))
+    last_print = live.implied_yoy(anchor_base) if anchor_base else None
+
+    if base_level:
+        flat = live.yoy_for_mom(0.0, base_level)
+
+        a, b, c = st.columns(3)
+        a.metric(
+            f"{pretty_month(target)} CPI — estimate",
+            f"{flat}%",
+            help="Year-on-year, the figure MOSPI prints. Assumes prices hold at "
+                 "the level we currently measure.",
+        )
+        if last_print is not None:
+            b.metric(
+                f"{pretty_month(live.anchor_month)} — published",
+                f"{last_print}%",
+                help="The last official print, for comparison.",
+            )
+        c.metric(
+            "Prices since that print",
+            f"{live.pct_change_since_anchor:+.2f}%",
+            help="Month-on-month movement in the parts of the basket we can price.",
+        )
+
+        if last_print is not None:
+            needed = live.mom_needed_for(last_print, base_level)
+            direction = "below" if flat < last_print else "above"
+            st.info(
+                f"**{pretty_month(target)} is tracking {abs(flat - last_print):.2f}pp "
+                f"{direction} {pretty_month(live.anchor_month)}'s {last_print}%** — and "
+                f"largely not because of what prices are doing now.\n\n"
+                f"A year-on-year rate divides today by a month twelve back. "
+                f"{pretty_month(base_month_for(target))} indexed **{base_level}**, so "
+                f"{pretty_month(target)} must move **{needed:+.2f}% month-on-month just "
+                f"to hold {last_print}%**. Flat prices print lower. That base is already "
+                f"published and cannot change — it is the most predictable part of the "
+                f"next release."
+            )
+
+        st.markdown(f"**If {pretty_month(target)} prices move by…**")
+        st.dataframe(
+            pd.DataFrame([{
+                "Month-on-month": f"{mom:+.2f}%",
+                f"{pretty_month(target)} would print": f"{live.yoy_for_mom(mom, base_level)}%",
+                "": "← flat prices" if mom == 0.0 else "",
+            } for mom in (-0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0)]),
+            use_container_width=True, hide_index=True,
+        )
+        release_month = _MONTHS[next_month_after(target).split("-")[1]]
+        st.caption(
+            f"{pretty_month(target)} data publishes around the 12th of {release_month}. "
+            f"Find the row matching your own view of this month's price move, and read "
+            f"off the print it implies."
+        )
 
     if result is None:
-        if snapshots:
-            st.info(
-                f"{len(snapshots)} price snapshot(s) on record. "
-                "Press the button to fetch current prices and recompute."
-            )
-        else:
-            st.info(
-                "No prices fetched yet. The first fetch establishes the reference "
-                "the index is measured against — it will show no movement by "
-                "construction, and every fetch after it reports real change."
-            )
+        st.caption(
+            f"Showing the last published position ({pretty_month(live.anchor_month)} = "
+            f"index {live.anchor_index}). Press **Refresh prices** to fold in today's "
+            f"gold, silver and fuel — about a second."
+            + (f" {len(snapshots)} snapshot(s) on record." if snapshots else "")
+        )
         return
 
     if not result["current"]:
         st.error("No price source returned data. Nothing recalculated.")
         return
 
-    live = compute_live_index(result["relatives"])
-
-    if result["first"] or not result["relatives"]:
+    if result["first"] or not relatives:
         st.warning(
-            "**First fetch — this is the reference, not a measurement.** Today's "
-            "prices become the baseline. There is no link to measure along yet, so "
-            "the index equals MOSPI's published figure. Fetch again later and this "
-            "becomes a real reading.\n\n"
-            "Note it reports *no* relative rather than a relative of 1.0: claiming "
-            "no change would assert something about prices over a period we never "
-            "observed."
-        )
-    else:
-        st.caption(
-            f"Measured along {len(snapshots) - 1} chained link(s) between "
-            f"{len(snapshots)} snapshots. Each link uses its own matched sample, so "
-            f"an item that stops scraping keeps the movement it contributed while it "
-            f"was visible instead of being erased from the record."
+            "**First fetch — this sets the reference, it does not measure yet.** There "
+            "is no earlier snapshot to compare against, so no price movement is claimed. "
+            "Refresh again later and this becomes a real reading."
         )
 
-    left, right = st.columns([2, 3])
-    with left:
-        st.metric(
-            "Computed CPI index",
-            f"{live.index}",
-            delta=f"{live.pct_change_since_anchor:+.3f}% vs {live.anchor_month}",
-            help="Index level, base 2024=100.",
-        )
-        base = _base_level_for("2026-07")
-        if base:
-            implied = live.implied_yoy(base)
-            st.metric(
-                "Implied inflation (YoY)",
-                f"{implied}%",
-                help=f"This index level against the published base of {base}.",
-            )
+    gap = unmeasured_gap(live.anchor_month)
+    st.caption(
+        f"Index {live.index} (base 2024=100), anchored on MOSPI's "
+        f"{pretty_month(live.anchor_month)} release. "
+        f"**{live.observed_weight:.1f}% of the basket repriced** from live sources; the "
+        f"rest carried at its last published level."
+        + (f" The {gap} between that month ending and our first observation are "
+           f"unmeasured — treated as flat because we were not yet watching." if gap else "")
+    )
 
-    with right:
-        st.markdown(
-            f"**{live.observed_weight:.1f}% of the basket was repriced** from live "
-            f"sources. The remaining {100 - live.observed_weight:.1f}% is carried at "
-            f"MOSPI's last published level.\n\n"
-            f"Carrying unpriced divisions forward is an assumption — an explicit "
-            f"and conservative one. It says only that we did not observe a change, "
-            f"not that none occurred. As more sources come online, the carried "
-            f"share shrinks and the reading tightens."
+    with st.expander("Division detail"):
+        st.dataframe(
+            pd.DataFrame([{
+                "Division": _PRETTY.get(r.key, r.key),
+                "Weight %": round(r.weight, 2),
+                "We price": f"{r.tracked_share:.0%}",
+                "Anchor": round(r.anchor_index, 2),
+                "Live": round(r.live_index, 2),
+                "Move": f"{r.pct_change:+.2f}%" if r.observed else "—",
+                "Source": "measured" if r.observed else "carried",
+            } for r in live.readings]),
+            use_container_width=True, hide_index=True,
         )
-        gap = unmeasured_gap(live.anchor_month)
-        if gap:
-            st.caption(
-                f"Anchor: MOSPI CPI release for {live.anchor_month}, Annexure I. "
-                f"**{gap} between that month ending and our first price observation "
-                f"are unmeasured** — the index treats that stretch as flat because we "
-                f"were not yet watching. It shrinks each time a new release lets us "
-                f"re-anchor closer to the present."
-            )
-        else:
-            st.caption(f"Anchor: MOSPI CPI release for {live.anchor_month}, Annexure I.")
-
-    rows = []
-    for r in live.readings:
-        rows.append({
-            "Division": _PRETTY.get(r.key, r.key),
-            "Weight %": round(r.weight, 2),
-            "Anchor": round(r.anchor_index, 2),
-            "Live": round(r.live_index, 2),
-            "Change": f"{r.pct_change:+.2f}%" if r.observed else "—",
-            "Source": "measured" if r.observed else "carried",
-        })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     with st.expander("Prices fetched this run"):
         reference = reference_prices()
@@ -151,18 +205,17 @@ def render_live_index():
         for division, items in result["current"].items():
             base_items = reference.get(division, {})
             for item_id, price in sorted(items.items()):
-                base = base_items.get(item_id)
+                prior = base_items.get(item_id)
                 rows.append({
                     "Division": _PRETTY.get(division, division),
                     "Item": item_id,
                     "Price now": round(price, 2),
-                    "Reference": round(base, 2) if base else "—",
-                    "Change": f"{(price / base - 1) * 100:+.2f}%" if base else "new",
+                    "Reference": round(prior, 2) if prior else "—",
+                    "Change": f"{(price / prior - 1) * 100:+.2f}%" if prior else "new",
                 })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         st.caption(
-            "Each division's relative is the geometric mean of the ratios above, "
-            "over items priced in BOTH periods. Items marked 'new' set their own "
-            "reference and do not affect this reading — a lost or added item must "
-            "never register as a price move."
+            "Each division's move is the geometric mean of the ratios above, over items "
+            "priced in BOTH periods. Items marked 'new' set their own reference — a "
+            "product that changes must never register as a price move."
         )

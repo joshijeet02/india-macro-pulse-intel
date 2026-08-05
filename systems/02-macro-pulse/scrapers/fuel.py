@@ -37,15 +37,14 @@ log = logging.getLogger(__name__)
 
 CITY = "New Delhi"
 
+# Single source, deliberately. A bankbazaar mirror was included as a
+# cross-check but its pages carry no City/Price table, so it never once
+# parsed — it contributed no verification and roughly doubled fetch latency.
+# A source that has never succeeded is not redundancy, and keeping it would
+# have implied a corroboration that was not happening.
 SOURCES = {
-    "petrol": (
-        "https://www.goodreturns.in/petrol-price-in-delhi.html",
-        "https://www.bankbazaar.com/fuel/petrol-price-delhi.html",
-    ),
-    "diesel": (
-        "https://www.goodreturns.in/diesel-price-in-delhi.html",
-        "https://www.bankbazaar.com/fuel/diesel-price-delhi.html",
-    ),
+    "petrol": ("https://www.goodreturns.in/petrol-price-in-delhi.html",),
+    "diesel": ("https://www.goodreturns.in/diesel-price-in-delhi.html",),
 }
 
 HEADERS = {
@@ -60,6 +59,9 @@ HEADERS = {
 # this is a parse error, not a price — a mis-read table cell would otherwise
 # move the transport division hard while looking like a plausible number.
 PLAUSIBLE_RANGE = (60.0, 200.0)
+
+# Kept short: this runs on a button press a person is waiting on.
+FETCH_TIMEOUT = 10
 
 # Two sources disagreeing by more than this means one is stale or mis-parsed.
 DISAGREEMENT_TOLERANCE = 0.03      # 3%
@@ -99,7 +101,7 @@ def extract_city_price(html: str, city: str = CITY) -> Optional[float]:
 
 def _fetch(url: str) -> Optional[str]:
     try:
-        response = requests.get(url, headers=HEADERS, timeout=25)
+        response = requests.get(url, headers=HEADERS, timeout=FETCH_TIMEOUT)
         response.raise_for_status()
         return response.text
     except requests.RequestException as exc:

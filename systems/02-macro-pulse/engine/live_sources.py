@@ -142,6 +142,13 @@ FETCHERS: dict[str, Fetcher] = {
     "fuel": fetch_fuel_prices,
 }
 
+# Grocery drives a headless browser across 20 Amazon searches with backoff, so
+# it takes two to three minutes. Bullion and fuel are plain HTTP and return in
+# about a second. Lumping them together meant every refresh cost minutes, which
+# made the button feel broken. Fast sources are the default; grocery is opt-in.
+SLOW_FETCHERS = {"grocery"}
+FAST_FETCHERS = set(FETCHERS) - SLOW_FETCHERS
+
 
 # ─── Snapshot store ──────────────────────────────────────────────────────────
 
@@ -318,10 +325,16 @@ def unmeasured_gap(anchor_month: str, snapshots: Optional[list] = None) -> Optio
     return f"{days} days" if days > 0 else None
 
 
-def fetch_all() -> dict:
-    """Run every fetcher. A failing source is skipped, never fatal."""
+def fetch_all(include_slow: bool = True) -> dict:
+    """
+    Run the fetchers. A failing source is skipped, never fatal.
+
+    `include_slow=False` runs only the sub-second HTTP sources, so a refresh
+    returns immediately instead of waiting on the Amazon scrape.
+    """
+    names = FETCHERS if include_slow else {k: v for k, v in FETCHERS.items() if k in FAST_FETCHERS}
     prices: dict[str, dict] = {}
-    for name, fetcher in FETCHERS.items():
+    for name, fetcher in names.items():
         try:
             prices.update(fetcher() or {})
         except Exception as exc:
@@ -329,7 +342,7 @@ def fetch_all() -> dict:
     return prices
 
 
-def fetch_and_measure() -> tuple[dict, dict, bool]:
+def fetch_and_measure(include_slow: bool = True) -> tuple[dict, dict, bool]:
     """
     Fetch, store, and return (current_prices, relatives, is_first_fetch).
 
@@ -338,7 +351,7 @@ def fetch_and_measure() -> tuple[dict, dict, bool]:
     nothing to compare against yet".
     """
     reference_before = reference_prices()
-    current = fetch_all()
+    current = fetch_all(include_slow=include_slow)
     if not current:
         return {}, {}, not reference_before
 
