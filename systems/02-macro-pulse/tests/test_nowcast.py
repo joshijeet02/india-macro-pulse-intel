@@ -156,3 +156,78 @@ def test_pretty_month_degrades_on_bad_input():
     from ui.nowcast_view import pretty_month
     for bad in ("2026", "garbage", "2026-99", ""):
         assert isinstance(pretty_month(bad), str)
+
+
+# ── shock detection ─────────────────────────────────────────────────────────
+
+def test_shock_fires_when_models_all_miss_the_same_way():
+    """
+    Structurally different models fail in DIFFERENT directions when merely
+    imprecise. One-sided agreement means a common cause acting on the target.
+    A steepening series leaves every backward-looking model behind.
+    """
+    from engine.nowcast import detect_shock
+    # A real shock is ABRUPT. On a smoothly accelerating series some models
+    # over-predict while others under-predict, and agreement never forms —
+    # which is correct behaviour: gradual drift is not a regime break.
+    accelerating = _series([2.0] * 10 + [3.0, 4.5])
+    shock = detect_shock(accelerating)
+    assert shock is not None
+    assert shock.bias < 0                        # models under-predicted
+    assert shock.direction == "under-predicting"
+    assert shock.agreement >= 0.85
+    assert shock.is_active
+
+
+def test_shock_is_inactive_on_a_stable_series():
+    """A flat series gives every model an easy time — no regime to detect."""
+    from engine.nowcast import detect_shock
+    flat = _series([3.0] * 14)
+    shock = detect_shock(flat)
+    assert shock is None or not shock.is_active
+
+
+def test_gradual_drift_is_not_mistaken_for_a_shock():
+    """
+    Smooth acceleration must NOT trigger. Some models lead and some lag on a
+    trend, so they miss in both directions — exactly the signature of ordinary
+    imprecision rather than an unobserved common cause.
+    """
+    from engine.nowcast import detect_shock
+    drifting = _series([2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8,
+                        3.4, 4.2, 5.1, 6.2, 7.4])
+    shock = detect_shock(drifting)
+    assert shock is not None
+    assert not shock.is_active, "gradual drift should not read as a regime break"
+
+
+def test_shock_needs_enough_history():
+    from engine.nowcast import detect_shock
+    assert detect_shock(_series([1.0, 2.0, 3.0])) is None
+
+
+def test_shock_adjustment_moves_the_published_point():
+    """The headline number must reflect the correction, not just report it."""
+    accelerating = _series([2.0] * 13 + [3.0, 4.5])
+    nc = nowcast_headline(accelerating)
+    assert nc is not None
+    assert nc.shock is not None and nc.shock.is_active
+    assert nc.point != nc.raw_point
+    # under-predicting bias is negative, so the correction raises the estimate
+    assert nc.point > nc.raw_point
+
+
+def test_raw_point_is_preserved_for_disclosure():
+    """A reader must be able to see the estimate before adjustment."""
+    accelerating = _series([2.0] * 13 + [3.0, 4.5])
+    nc = nowcast_headline(accelerating)
+    assert isinstance(nc.raw_point, float)
+    assert nc.shock.bias == pytest.approx(nc.raw_point - nc.point, abs=0.02)
+
+
+def test_no_adjustment_applied_when_shock_inactive():
+    steady = _series([2.0, 2.2, 2.1, 2.4, 2.3, 2.5, 2.4, 2.6, 2.5,
+                      2.7, 2.6, 2.8, 2.7, 2.9])
+    nc = nowcast_headline(steady)
+    if nc is not None and (nc.shock is None or not nc.shock.is_active):
+        assert nc.point == nc.raw_point

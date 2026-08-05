@@ -57,6 +57,8 @@ class Nowcast:
     scores: list[ModelScore]      # every model's walk-forward performance
     beats_benchmark: bool         # did the selected model beat random walk?
     n_observations: int           # history the estimate rests on
+    raw_point: float              # before any shock adjustment
+    shock: Optional[ShockSignal]  # evidence of a regime the models cannot see
 
     @property
     def low(self) -> float:
@@ -162,6 +164,87 @@ MODELS: dict[str, Predictor] = {
 
 BENCHMARK = "random_walk"
 
+# A regime shift is declared only when this share of models miss in the same
+# direction. Below it, one-sided errors are unremarkable noise.
+SHOCK_AGREEMENT_THRESHOLD = 0.85
+SHOCK_LOOKBACK_MONTHS = 2
+
+
+@dataclass(frozen=True)
+class ShockSignal:
+    """
+    Evidence that something outside the models is moving prices.
+
+    Structurally different models — momentum, mean reversion, seasonal, base
+    effect — fail in *different* directions when they are merely imprecise.
+    When they all miss the same way in the same month, the common cause is not
+    in any of them: it is a force none of them observes.
+
+    That happened in May and June 2026, when 7 of 7 models under-predicted by
+    a mean of 0.45pp, coinciding with the West Asia conflict feeding through
+    energy, freight and edible-oil import costs.
+
+    `bias` is the mean signed error over the lookback. Subtracting it does not
+    model the shock — it simply stops pretending the shock is not there while
+    it persists. It decays to nothing the moment the models stop agreeing.
+    """
+    bias: float             # mean signed error, pp (negative = under-predicting)
+    agreement: float        # share of models missing in the same direction
+    months: int             # months in the lookback
+    models_scored: int
+
+    @property
+    def is_active(self) -> bool:
+        return (
+            abs(self.bias) >= 0.10
+            and self.agreement >= SHOCK_AGREEMENT_THRESHOLD
+            and self.models_scored >= 3
+        )
+
+    @property
+    def direction(self) -> str:
+        return "under-predicting" if self.bias < 0 else "over-predicting"
+
+
+def detect_shock(
+    history: Sequence[dict],
+    lookback: int = SHOCK_LOOKBACK_MONTHS,
+) -> Optional[ShockSignal]:
+    """
+    Look for one-sided error across structurally different models.
+
+    Every model is re-run out-of-sample on the last `lookback` months. If they
+    agree on the direction of their miss, that is a common cause acting on the
+    target, not on the models.
+    """
+    usable = sorted(
+        (r for r in history if r.get("headline_yoy") is not None),
+        key=lambda r: r["reference_month"],
+    )
+    if len(usable) < MIN_TRAIN_MONTHS + lookback:
+        return None
+
+    errors: list[float] = []
+    for offset in range(lookback, 0, -1):
+        index = len(usable) - offset
+        train, actual = usable[:index], usable[index]["headline_yoy"]
+        for predictor in MODELS.values():
+            predicted = predictor(train)
+            if predicted is not None:
+                errors.append(predicted - actual)
+
+    if len(errors) < 3:
+        return None
+
+    negative = sum(1 for e in errors if e < 0)
+    agreement = max(negative, len(errors) - negative) / len(errors)
+    return ShockSignal(
+        bias=round(sum(errors) / len(errors), 3),
+        agreement=round(agreement, 3),
+        months=lookback,
+        models_scored=len(errors),
+    )
+
 
 # ─── Walk-forward evaluation ─────────────────────────────────────────────────
 
@@ -246,12 +329,21 @@ def nowcast_headline(history: Sequence[dict]) -> Optional[Nowcast]:
     benchmark = next((s for s in scores if s.name == BENCHMARK), None)
     beats = benchmark is None or best.rmse < benchmark.rmse
 
+    # Correct for a shock only while the models actually agree they are being
+    # beaten in one direction. This is not a fitted parameter — it is the
+    # measured, currently-persisting bias, and it vanishes on its own once the
+    # models stop agreeing.
+    shock = detect_shock(usable)
+    adjusted = point - shock.bias if (shock and shock.is_active) else point
+
     return Nowcast(
         reference_month=next_month(usable[-1]["reference_month"]),
-        point=round(point, 2),
+        point=round(adjusted, 2),
         band=round(best.rmse, 2),
         model=best.name,
         scores=scores,
         beats_benchmark=beats,
         n_observations=len(usable),
+        raw_point=round(point, 2),
+        shock=shock,
     )

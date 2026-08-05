@@ -81,6 +81,23 @@ def render_nowcast_header():
             "that assumption — treat it accordingly."
         )
 
+    shock = nowcast.shock
+    if shock is not None and shock.is_active:
+        st.error(
+            f"**Regime shift detected — estimate adjusted by "
+            f"{-shock.bias:+.2f}pp** (raw model output was {nowcast.raw_point}%).\n\n"
+            f"Over the last {shock.months} months, **{shock.agreement:.0%} of "
+            f"{shock.models_scored} model-runs missed in the same direction** "
+            f"({shock.direction} by {abs(shock.bias):.2f}pp on average). Models built "
+            f"on momentum, mean reversion, seasonality and base effects fail in "
+            f"*different* directions when they are merely imprecise. When they all "
+            f"miss the same way, the cause is not in the models — it is a force none "
+            f"of them observes, such as an energy or supply shock feeding through "
+            f"fuel, freight and imported food costs.\n\n"
+            f"The correction is the measured bias, not a fitted parameter. It "
+            f"disappears on its own once the models stop agreeing."
+        )
+
     with st.expander("How accurate is this? — full model scoreboard"):
         st.markdown(
             "Every model scored **out-of-sample**: fit on months up to *t*, predict "
