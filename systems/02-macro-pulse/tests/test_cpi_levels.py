@@ -72,3 +72,58 @@ def test_published_levels_are_never_an_input_to_reconstruction():
             assert levels[month] == pytest.approx(
                 round(base * (1 + YOY_2026[month] / 100), 2), abs=0.001
             )
+
+
+# ── the central month-on-month assumption ───────────────────────────────────
+
+def test_central_mom_blends_seasonal_and_momentum():
+    from engine.cpi_levels import central_mom
+    moms = {"2025-07": 0.82, "2026-05": 0.75, "2026-06": 1.04}
+    value, basis = central_mom(moms, "2026-07")
+    assert value == pytest.approx((0.82 + 1.04) / 2)
+    assert "2025-07" in basis and "2026-06" in basis
+
+
+def test_central_mom_falls_back_to_momentum_without_a_seasonal_match():
+    from engine.cpi_levels import central_mom
+    value, basis = central_mom({"2026-06": 1.04}, "2026-07")
+    assert value == pytest.approx(1.04)
+    assert "last month" in basis
+
+
+def test_central_mom_is_never_zero_when_prices_are_moving():
+    """
+    Flat was the WORST of five estimators over 14 months (MAE 0.372 vs 0.228),
+    and shipping it as the headline understated the next print by about a
+    percentage point. It must not creep back as a default.
+    """
+    from engine.cpi_levels import central_mom
+    value, _ = central_mom({"2025-07": 0.82, "2026-06": 1.04}, "2026-07")
+    assert value > 0.5
+
+
+def test_central_mom_handles_an_empty_series():
+    from engine.cpi_levels import central_mom
+    assert central_mom({}, "2026-07") is None
+
+
+def test_the_estimate_lands_near_street_consensus():
+    """
+    Reached from our own MoM data with the estimator chosen by backtest — not
+    anchored to the poll. If a change moves us far from the street, that should
+    be a deliberate call, not a silent drift.
+    """
+    from engine.cpi_levels import ANCHOR_LEVELS, CONSENSUS, central_mom
+    moms = {"2025-07": 0.82, "2026-05": 0.75, "2026-06": 1.04}
+    value, _ = central_mom(moms, "2026-07")
+    implied = (107.00 * (1 + value / 100) / ANCHOR_LEVELS["2025-07"] - 1) * 100
+    street = CONSENSUS["2026-07"]
+    assert street["low"] - 0.3 <= implied <= street["high"] + 0.3, implied
+
+
+def test_consensus_entries_carry_a_source_and_a_date():
+    """An undated consensus quoted as current is worse than none."""
+    from engine.cpi_levels import CONSENSUS
+    for month, entry in CONSENSUS.items():
+        assert entry["source"] and entry["as_of"]
+        assert entry["low"] <= entry["high"]

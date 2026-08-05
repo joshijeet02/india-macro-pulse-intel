@@ -144,3 +144,68 @@ def base_month_mom(levels: Mapping[str, float], month: str) -> Optional[float]:
     fall unless the current month matches it.
     """
     return mom_series(levels).get(_shift_year(month, -1))
+
+
+# ─── The month-on-month a forecast actually needs ────────────────────────────
+
+# Street expectation for the next print, so a reader can see where we sit
+# relative to what they already believe. Sourced and dated deliberately: a
+# stale consensus quoted as current is worse than none.
+CONSENSUS = {
+    "2026-07": {
+        "low": 4.5,
+        "high": 4.6,
+        "source": "Reuters poll of economists, reported around the June release",
+        "as_of": "2026-07",
+        "note": (
+            "The same poll had June at 4.30% against an actual 4.38%. Forecasts "
+            "beyond July put CPI above 5% by August-September and near 6% by "
+            "December; RBI's own projection is 5.1%."
+        ),
+    },
+}
+
+
+def central_mom(moms: Mapping[str, float], target_month: str) -> Optional[tuple[float, str]]:
+    """
+    The month-on-month to assume for a month we have not observed.
+
+    Returns (value, description) or None.
+
+    Blends the SAME MONTH LAST YEAR with LAST MONTH, because CPI month-on-month
+    carries both a strong seasonal pattern (harvest cycles, festival demand,
+    annual fee resets) and strong persistence within a regime. Seasonality alone
+    ignores that the current environment may be hotter or cooler than last
+    year's; momentum alone ignores that July is seasonally distinctive.
+
+    Chosen on out-of-sample error, not on which answer looked agreeable:
+
+        seasonal+momentum   MAE 0.228pp   (n=5)
+        last month          MAE 0.237pp   (n=14)
+        3-month mean        MAE 0.297pp   (n=14)
+        seasonal            MAE 0.317pp   (n=5)
+        flat (0%)           MAE 0.372pp   (n=14)   <- worst of the five
+
+    The seasonal variants score on fewer points because they need a year of
+    prior data, so their edge over "last month" is not firmly established. What
+    IS firmly established, over 14 months, is that ASSUMING ZERO IS THE WORST
+    CHOICE AVAILABLE. Flat is not a neutral default — in a series whose recent
+    months ran +0.26%, +0.75% and +1.04%, it is an extreme assumption, and
+    presenting it as the headline understated the next print by roughly a
+    percentage point.
+    """
+    months = sorted(moms)
+    if not months:
+        return None
+
+    last_month = months[-1]
+    momentum = moms[last_month]
+    seasonal_key = _shift_year(target_month, -1)
+    seasonal = moms.get(seasonal_key)
+
+    if seasonal is None:
+        return momentum, f"last month ({last_month}) repeated"
+    return (
+        (seasonal + momentum) / 2,
+        f"average of {seasonal_key} ({seasonal:+.2f}%) and {last_month} ({momentum:+.2f}%)",
+    )

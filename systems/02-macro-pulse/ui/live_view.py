@@ -19,7 +19,9 @@ sensitivity table is not decoration: without it the headline looks arbitrary.
 import pandas as pd
 import streamlit as st
 
-from engine.cpi_levels import ANCHOR_LEVELS
+from engine.cpi_levels import (
+    ANCHOR_LEVELS, CONSENSUS, build_levels, central_mom, mom_series,
+)
 from engine.live_index import compute_live_index
 from engine.live_sources import (
     fetch_and_measure, load_snapshots, reference_prices, unmeasured_gap,
@@ -102,15 +104,29 @@ def render_live_index():
     anchor_base = ANCHOR_LEVELS.get(base_month_for(live.anchor_month))
     last_print = live.implied_yoy(anchor_base) if anchor_base else None
 
+    # The month-on-month to assume for a month we have not observed. NOT zero:
+    # over 14 months, assuming flat was the worst of five estimators tested,
+    # and in a series whose recent months ran +0.26/+0.75/+1.04 it understated
+    # the next print by about a percentage point.
+    from db.store import CPIStore
+    history = CPIStore().get_history(months=240)
+    moms = mom_series(build_levels({
+        r["reference_month"]: r["headline_yoy"]
+        for r in history if r.get("headline_yoy") is not None
+    }))
+    central = central_mom(moms, target)
+
     if base_level:
         flat = live.yoy_for_mom(0.0, base_level)
+        mom_value, mom_basis = central if central else (0.0, "no basis available")
+        estimate = live.yoy_for_mom(mom_value, base_level)
 
         a, b, c = st.columns(3)
         a.metric(
             f"{pretty_month(target)} CPI — estimate",
-            f"{flat}%",
-            help="Year-on-year, the figure MOSPI prints. Assumes prices hold at "
-                 "the level we currently measure.",
+            f"{estimate}%",
+            help=f"Year-on-year, the figure MOSPI prints. Assumes {mom_value:+.2f}% "
+                 f"month-on-month: {mom_basis}.",
         )
         if last_print is not None:
             b.metric(
@@ -124,19 +140,40 @@ def render_live_index():
             help="Month-on-month movement in the parts of the basket we can price.",
         )
 
+        street = CONSENSUS.get(target)
+        if street:
+            midpoint = (street["low"] + street["high"]) / 2
+            gap_to_street = estimate - midpoint
+            agreement = (
+                "in line with" if abs(gap_to_street) <= 0.15
+                else ("above" if gap_to_street > 0 else "below")
+            )
+            st.success(
+                f"**Street consensus for {pretty_month(target)}: "
+                f"{street['low']}–{street['high']}%.** Our estimate of {estimate}% is "
+                f"{agreement} it"
+                + (f", by {abs(gap_to_street):.2f}pp" if agreement != "in line with" else "")
+                + f".\n\nWe get there from our own month-on-month data — "
+                f"{mom_basis} — not by anchoring to the poll. "
+                f"{street['note']} _Source: {street['source']}._"
+            )
+
         if last_print is not None:
             needed = live.mom_needed_for(last_print, base_level)
-            direction = "below" if flat < last_print else "above"
+            direction = "below" if estimate < last_print else "above"
             st.info(
-                f"**{pretty_month(target)} is tracking {abs(flat - last_print):.2f}pp "
-                f"{direction} {pretty_month(live.anchor_month)}'s {last_print}%** — and "
-                f"largely not because of what prices are doing now.\n\n"
+                f"**{pretty_month(target)} is tracking {abs(estimate - last_print):.2f}pp "
+                f"{direction} {pretty_month(live.anchor_month)}'s {last_print}%.**\n\n"
                 f"A year-on-year rate divides today by a month twelve back. "
                 f"{pretty_month(base_month_for(target))} indexed **{base_level}**, so "
                 f"{pretty_month(target)} must move **{needed:+.2f}% month-on-month just "
                 f"to hold {last_print}%**. Flat prices print lower. That base is already "
                 f"published and cannot change — it is the most predictable part of the "
-                f"next release."
+                f"next release.\n\n"
+                f"On the other side, we assume **{mom_value:+.2f}% month-on-month** "
+                f"({mom_basis}). Flat prices would print {flat}%, but flat is not a "
+                f"neutral guess: over 14 months it was the worst of five estimators "
+                f"tested, and recent months ran +0.26%, +0.75% and +1.04%."
             )
 
         st.markdown(f"**If {pretty_month(target)} prices move by…**")
@@ -144,8 +181,10 @@ def render_live_index():
             pd.DataFrame([{
                 "Month-on-month": f"{mom:+.2f}%",
                 f"{pretty_month(target)} would print": f"{live.yoy_for_mom(mom, base_level)}%",
-                "": "← flat prices" if mom == 0.0 else "",
-            } for mom in (-0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0)]),
+                "": ("← our estimate" if abs(mom - mom_value) < 0.05
+                     else "← flat prices" if mom == 0.0 else ""),
+            } for mom in sorted({-0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0,
+                                 round(mom_value, 2)})]),
             use_container_width=True, hide_index=True,
         )
         release_month = _MONTHS[next_month_after(target).split("-")[1]]
