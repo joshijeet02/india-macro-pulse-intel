@@ -91,6 +91,7 @@ if _ecomm.has_data():
                 })
 
 from ui._mode import render_mode_toggle
+from ui.nowcast_view import render_nowcast_header
 from ui.calendar_view import render_release_calendar
 from ui.cpi_view import render_cpi_section
 from ui.iip_view import render_iip_section
@@ -101,7 +102,13 @@ from ui.ecomm_view import render_ecomm_section
 render_mode_toggle()
 
 st.title("India Macro Pulse")
-st.caption("Strategic release intelligence for India's economic indicators · Real-time proprietary e-commerce signals")
+st.caption("Live CPI estimate between official prints · Release intelligence for India's economic indicators")
+
+# First thing on the page: an estimate of the CPI print, whether or not MOSPI
+# has published. Official CPI lands once a month with a ~12-day lag, so for
+# most of any month the published figure is stale — this is what fills the gap.
+render_nowcast_header()
+st.divider()
 
 render_release_calendar()
 st.divider()
