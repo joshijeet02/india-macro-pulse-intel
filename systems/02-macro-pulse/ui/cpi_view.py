@@ -14,6 +14,29 @@ _TONE_FN = {
 }
 
 
+def contribution_rows(decomposition: dict) -> list[tuple[str, float]]:
+    """
+    Select the contribution components worth charting, in display order.
+
+    Under the 2024=100 base there is no "Fuel & Light" division, so
+    `fuel_contrib` is legitimately None and the split is food vs core. That
+    is still worth charting — the previous all-or-nothing gate hid the chart
+    entirely for every 2026 release. The core label reflects
+    `core_definition` so a reader is never left guessing what "core" excludes.
+    """
+    core_label = (
+        "Core (ex-food)"
+        if decomposition.get("core_definition") == "ex-food"
+        else "Core"
+    )
+    candidates = [
+        ("Food", decomposition.get("food_contrib")),
+        ("Fuel", decomposition.get("fuel_contrib")),
+        (core_label, decomposition.get("core_contrib")),
+    ]
+    return [(name, value) for name, value in candidates if value is not None]
+
+
 def render_cpi_section():
     store = CPIStore()
     history = store.get_history(months=12)
@@ -68,15 +91,12 @@ def render_cpi_section():
                     _TONE_FN.get(a["tone"], st.info)(assessment_text(a))
 
     # ── Contribution bar chart ──────────────────────────────────────────────
-    if all(latest_dec.get(k) is not None for k in ["food_contrib", "fuel_contrib", "core_contrib"]):
+    _contrib_rows = contribution_rows(latest_dec)
+    if len(_contrib_rows) >= 2:
         st.subheader("Contributions to Headline CPI (pp)")
         contrib_data = pd.DataFrame({
-            "Component": ["Food", "Fuel", "Core"],
-            "Contribution (pp)": [
-                latest_dec["food_contrib"],
-                latest_dec["fuel_contrib"],
-                latest_dec["core_contrib"],
-            ],
+            "Component": [name for name, _ in _contrib_rows],
+            "Contribution (pp)": [value for _, value in _contrib_rows],
         })
         st.bar_chart(contrib_data.set_index("Component"))
 
