@@ -1,0 +1,11 @@
+{
+  "_comment": "Live price snapshots. The earliest snapshot per division is the reference the live index is measured against; it is never overwritten, because moving the reference would silently rewrite history.",
+  "snapshots": [
+    {
+      "fetched_at": "2026-08-05 17:22:32",
+      "prices": {
+        "personal_care_and_misc": 11048.335
+      }
+    }
+  ]
+}
