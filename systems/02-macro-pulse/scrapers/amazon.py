@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import random
 import statistics
 import time
 from datetime import datetime, timezone
@@ -66,46 +67,60 @@ def scrape_amazon(basket_items: list[dict]) -> list[dict]:
             locale="en-IN",
             viewport={"width": 1280, "height": 800},
         )
-        page = ctx.new_page()
-        page.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
-
         for item in basket_items:
             q = item.get("amazon_search") or item.get("blinkit_search") or item["name"]
-            try:
-                page.goto(
-                    f"https://www.amazon.in/s?k={q.replace(' ', '+')}",
-                    timeout=20_000,
-                    wait_until="domcontentloaded",
-                )
-                page.wait_for_timeout(3000)
+            url = f"https://www.amazon.in/s?k={q.replace(' ', '+')}"
 
-                candidates = _extract_candidates(page, MAX_RESULTS_PER_QUERY)
-                pick = _pick_best_match(candidates, item)
-                if pick is None:
-                    logger.info(f"Amazon: no match for {item['name']}")
-                    continue
+            # A FRESH page per item. Sharing one page meant a single failed
+            # navigation poisoned every subsequent item: the errors cascaded as
+            # "interrupted by another navigation" and a live run lost 13 of 20
+            # items after one stumble. An isolated page confines a failure to
+            # the item that caused it.
+            pick = None
+            for attempt in (1, 2):
+                page = None
+                try:
+                    page = ctx.new_page()
+                    page.add_init_script(
+                        "Object.defineProperty(navigator, 'webdriver', "
+                        "{get: () => undefined})"
+                    )
+                    page.goto(url, timeout=25_000, wait_until="domcontentloaded")
+                    page.wait_for_timeout(3000)
+                    candidates = _extract_candidates(page, MAX_RESULTS_PER_QUERY)
+                    pick = _pick_best_match(candidates, item)
+                    break
+                except PWTimeout:
+                    logger.info(f"Amazon: timeout for {item['name']} (attempt {attempt})")
+                except Exception as e:
+                    logger.warning(f"Amazon: error for {item['name']} (attempt {attempt}): {e}")
+                finally:
+                    if page is not None:
+                        try: page.close()
+                        except Exception: pass
+                if attempt == 1:
+                    time.sleep(5.0)   # back off before the single retry
 
-                price = pick["price"]
-                results.append({
-                    "platform":     "amazon",
-                    "item_id":      item["item_id"],
-                    "cpi_group":    item["cpi_group"],
-                    "item_name":    pick["title"][:200],  # cap title length
-                    "price":        price,
-                    "unit":         item["unit"],
-                    "price_per_kg": _price_per_kg(price, item["unit"]),
-                    "scraped_at":   scraped_at,
-                    "pincode":      PINCODE,
-                })
-
-                time.sleep(1.5)
-            except PWTimeout:
-                logger.info(f"Amazon: timeout for {item['name']}")
+            if pick is None:
+                logger.info(f"Amazon: no usable match for {item['name']}")
+                time.sleep(random.uniform(2.0, 4.0))
                 continue
-            except Exception as e:
-                logger.error(f"Amazon: error for {item['name']}: {e}")
+
+            price = pick["price"]
+            results.append({
+                "platform":     "amazon",
+                "item_id":      item["item_id"],
+                "cpi_group":    item["cpi_group"],
+                "item_name":    pick["title"][:200],  # cap title length
+                "price":        price,
+                "unit":         item["unit"],
+                "price_per_kg": _price_per_kg(price, item["unit"]),
+                "scraped_at":   scraped_at,
+                "pincode":      PINCODE,
+            })
+
+            # Jittered delay — a fixed 1.5s cadence is itself a bot signature.
+            time.sleep(random.uniform(2.0, 4.5))
 
     finally:
         try: browser.close()
@@ -130,10 +145,30 @@ def _extract_candidates(page, limit: int) -> list[dict]:
             const sponsored = !!t.querySelector('.puis-label-popover-default')
                 || !!t.querySelector('[data-component-type="sp-sponsored-result"]')
                 || (t.innerText || '').includes('Sponsored');
-            const titleEl = t.querySelector('h2 a span') || t.querySelector('h2 span');
+            // Amazon renders the tile heading inconsistently: on many tiles
+            // `h2 a span` holds only the BRAND ("NATURELAND ORGANICS",
+            // "Amul", "Fresh"), not the product. A live run matched on those
+            // truncated strings and produced nonsense. Try several selectors
+            // and keep the LONGEST string — product titles are long, brand
+            // labels are short.
+            const titleCandidates = [
+                t.querySelector('[data-cy="title-recipe"] h2'),
+                t.querySelector('h2 a span'),
+                t.querySelector('h2 span'),
+                t.querySelector('h2'),
+                t.querySelector('a.a-link-normal[title]'),
+                t.querySelector('.a-size-medium.a-color-base'),
+                t.querySelector('.a-size-base-plus.a-color-base'),
+            ];
+            let title = '';
+            for (const el of titleCandidates) {
+                if (!el) continue;
+                const txt = ((el.getAttribute && el.getAttribute('title')) || el.innerText || '').trim();
+                if (txt.length > title.length) title = txt;
+            }
             const priceEl = t.querySelector('.a-price .a-price-whole');
             return {
-                title: titleEl ? titleEl.innerText.trim() : '',
+                title: title,
                 priceText: priceEl ? priceEl.innerText.replace(/[,\\s]/g, '') : '',
                 sponsored: sponsored,
             };
@@ -172,14 +207,59 @@ def _extract_candidates(page, limit: int) -> list[dict]:
     return candidates
 
 
+def passes_match_guards(title: str, price: float, basket_item: dict) -> bool:
+    """
+    Reject candidates that are the wrong product entirely.
+
+    The first live scrape (2026-08-05) matched "Zhanmai Egg Cartons 12 Count"
+    at Rs.7722 for a dozen eggs, and "Fresh Onion, 1kg" for potato. Neither
+    was caught downstream: outlier rejection needs trailing history, and the
+    very first observation of an item has none — precisely when the matcher is
+    least protected. So the guards run at pick time, not after.
+
+    Three checks, all optional per item:
+      match_include — at least one term must appear in the title
+      match_exclude — no term may appear (catches accessories and variants)
+      price_range   — plausible band for the item's stated unit
+    """
+    lowered = title.lower()
+
+    include = basket_item.get("match_include")
+    if include and not any(term.lower() in lowered for term in include):
+        return False
+
+    exclude = basket_item.get("match_exclude")
+    if exclude and any(term.lower() in lowered for term in exclude):
+        return False
+
+    price_range = basket_item.get("price_range")
+    if price_range and not (price_range[0] <= price <= price_range[1]):
+        return False
+
+    return True
+
+
 def _pick_best_match(candidates: list[dict], basket_item: dict) -> Optional[dict]:
     """
-    Filter sponsored, prefer unit-consistent matches, return median by price.
+    Filter sponsored, drop wrong-product matches, prefer unit-consistent
+    candidates, return median by price.
     """
     # Strip sponsored
     natural = [c for c in candidates if not c["sponsored"]]
     if not natural:
         natural = candidates  # if EVERYTHING was sponsored, accept it
+
+    # Wrong-product guards. Applied before anything else, and never relaxed:
+    # a plausible price on the wrong product is worse than no observation,
+    # because it silently contaminates the index and every chart downstream.
+    guarded = [c for c in natural if passes_match_guards(c["title"], c["price"], basket_item)]
+    if not guarded:
+        logger.info(
+            f"Amazon: all {len(natural)} candidates failed match guards for "
+            f"{basket_item.get('item_id')} — recording no observation"
+        )
+        return None
+    natural = guarded
 
     # Unit-aware filter
     expected_unit = basket_item.get("unit", "")

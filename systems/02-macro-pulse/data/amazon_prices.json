@@ -1,0 +1,82 @@
+{
+  "_comment": "Amazon basket scrape history. Appended whenever a user clicks 'Run Price Scrape' in the deployed app or runs scripts/scrape_amazon.py. Hydrated into SQLite on app boot.",
+  "observations": [
+    {
+      "platform": "amazon",
+      "item_id": "rice",
+      "cpi_group": "Cereals",
+      "item_name": "India Gate Basmati Rice Everyday 5 kg",
+      "price": 369.0,
+      "unit": "5kg",
+      "price_per_kg": 73.8,
+      "scraped_at": "2026-08-05 16:31:17",
+      "pincode": "110001"
+    },
+    {
+      "platform": "amazon",
+      "item_id": "atta",
+      "cpi_group": "Cereals",
+      "item_name": "Nature's Superfoods Aashirvaad Organic Atta, 5kg",
+      "price": 382.0,
+      "unit": "5kg",
+      "price_per_kg": 76.4,
+      "scraped_at": "2026-08-05 16:31:17",
+      "pincode": "110001"
+    },
+    {
+      "platform": "amazon",
+      "item_id": "moong_dal",
+      "cpi_group": "Pulses",
+      "item_name": "FORTUNE Moong Dal, 500 Gm, Unpolished And Sortex Cleaned",
+      "price": 90.0,
+      "unit": "500g",
+      "price_per_kg": 180.0,
+      "scraped_at": "2026-08-05 16:31:17",
+      "pincode": "110001"
+    },
+    {
+      "platform": "amazon",
+      "item_id": "chana_dal",
+      "cpi_group": "Pulses",
+      "item_name": "Aashirvaad Organic Chana Dal, 1 Kg, 100% Organic Chana Dal, Rich in Protein",
+      "price": 153.0,
+      "unit": "1kg",
+      "price_per_kg": 153.0,
+      "scraped_at": "2026-08-05 16:31:17",
+      "pincode": "110001"
+    },
+    {
+      "platform": "amazon",
+      "item_id": "sugar",
+      "cpi_group": "Sugar & Confectionery",
+      "item_name": "Organic Tattva All Natural Sugar 1kg Fresh \u2013 Organically Processed from Fresh Sugarcane Juice, Zero Chemicals, Pure & Unrefined, Hygienically Packed (Pouch)",
+      "price": 124.0,
+      "unit": "1kg",
+      "price_per_kg": 124.0,
+      "scraped_at": "2026-08-05 16:31:17",
+      "pincode": "110001"
+    },
+    {
+      "platform": "amazon",
+      "item_id": "coriander_powder",
+      "cpi_group": "Spices",
+      "item_name": "Catch Coriander Powder | Dhaniya Powder, 200g",
+      "price": 50.0,
+      "unit": "200g",
+      "price_per_kg": 250.0,
+      "scraped_at": "2026-08-05 16:31:17",
+      "pincode": "110001"
+    },
+    {
+      "platform": "amazon",
+      "item_id": "tea",
+      "cpi_group": "Non-Alcoholic Beverages",
+      "item_name": "Society Leaf Tea \u2014 100% Pure Assam CTC, Strong & Rich Chai Patti, The Original Blue Pack From Hasmukhrai & Co. Since 1924 | 250 g Pouch | Loose Leaves, No Preservatives",
+      "price": 155.0,
+      "unit": "250g",
+      "price_per_kg": 620.0,
+      "scraped_at": "2026-08-05 16:31:17",
+      "pincode": "110001"
+    }
+  ]
+}
