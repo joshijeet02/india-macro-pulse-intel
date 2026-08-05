@@ -31,9 +31,11 @@ One quantity is being optimized: **out-of-sample absolute error between our publ
 Headline is the target because that is what the MPC targets, what consensus trades, and what a desk publishes. But our basket only observes food, so we predict headline by decomposition:
 
 ```
-headline_nowcast = 0.3675 × food_nowcast   +   0.6325 × non_food_nowcast
-                   └── observed basket ──┘       └── AR / persistence ──┘
+headline_nowcast = 0.36753 × food_nowcast  +  0.63247 × non_food_nowcast
+                   └── observed basket ──┘      └── AR / persistence ──┘
 ```
+
+Weights are the official CPI 2024 Combined division shares (source: MOSPI first 2024-base release, 12 Feb 2026, Annexure V Q39).
 
 This split is not a compromise; it is the point. The two legs have opposite statistical characters:
 
@@ -42,7 +44,17 @@ This split is not a compromise; it is the point. The two legs have opposite stat
 
 Expensive signal is spent where variance lives; cheap statistics cover where it does not. Errors become **attributable** to a leg, which is the difference between a number we can improve and one we can only apologise for.
 
-**Consequence of the rebasing.** Food's weight fell from 45.86% to 36.75%, so the same food-nowcast accuracy now buys ~20% less headline accuracy than under the 2012 base. This argues for tightening the food leg, not for retreating to a food-only target.
+**Consequence of the rebasing — and an important correction.** The headline "45.86% → 36.75%" is *not* all Engel's-law expenditure shift. MOSPI decomposes it (Annexure V, Q40):
+
+| Comparison | Shift | Cause |
+|---|---|---|
+| 45.86% → 40.10% | −5.76pp | Genuine expenditure shift, holding CPI 2012 classification fixed |
+| 42.62% → 36.75% | −5.87pp | Genuine shift, holding COICOP 2018 classification fixed |
+| 40.10% vs 36.75% | −3.35pp | **Reclassification only**, not behaviour |
+
+The reclassification gap is mostly "Restaurants and accommodation services" (3.348%) splitting out into its own division. Under CPI 2012, Food & Beverages included eating out; under COICOP 2018 it does not.
+
+**This materially improves our construct validity.** Our basket is 20 raw grocery items. It never had any business proxying a 45.86% aggregate that bundled restaurant meals. The new 36.753% F&B division is *closer* to what we actually measure. The effective leverage loss is therefore smaller than the headline numbers suggest, and the mapping is cleaner.
 
 ## 2. Audience & success metrics
 
@@ -70,7 +82,7 @@ Expensive signal is spent where variance lives; cheap statistics cover where it 
   | `cpi.mospi.gov.in` | Connection timeout |
 
   Ingestion must therefore be **primary + fallback**, never single-host, and must cache into the repo.
-- **Series break at Jan 2026.** CPI 2012 food and CPI 2024 F&B are different constructs under COICOP 2018. Any backtest spanning the break must handle it explicitly rather than concatenating.
+- **Series break at Jan 2026 — and MOSPI forbids linking below the general index.** Verbatim from the 2024-base release: *"the two series can be directly linked only for general index level."* Official linking factors exist (Rural 0.5222, Urban 0.5320, **Combined 0.5267**) and an official back series covers the General Index Jan-2013 → Dec-2024. But **no linkable food series spans the break.** This is a hard constraint, not a modelling preference: the food leg cannot be backtested continuously across Jan-2026, while the headline leg can.
 - **Amazon actively defends against scraping.** The index must degrade gracefully, never silently.
 
 ## 4. Data sources
@@ -88,6 +100,31 @@ Expensive signal is spent where variance lives; cheap statistics cover where it 
 |---|---|---|
 | Covered by DoCA | rice, atta, toor, moong, chana, sunflower oil, mustard oil, milk, onion, tomato, potato, sugar, tea | 75.3% |
 | Amazon-only | curd, paneer, eggs, banana, apple, turmeric, coriander | 24.8% |
+
+### Official CPI 2024 division weights (Combined)
+
+Sourced from MOSPI's first 2024-base release, Annexure V Q39. Both columns are on the COICOP 2018 structure, so they are directly comparable. Sums to 100.0.
+
+| Division | CPI 2012 | CPI 2024 |
+|---|---|---|
+| **Food and beverages** | 42.617 | **36.753** |
+| Housing, water, electricity, gas and other fuels | 16.888 | 17.665 |
+| Transport | 6.394 | 8.796 |
+| Clothing and footwear | 6.527 | 6.383 |
+| Health | 5.900 | 6.100 |
+| Personal care, social protection and misc | 4.006 | 5.038 |
+| Furnishings, household equipment, maintenance | 3.656 | 4.469 |
+| Information and communication | 3.323 | 3.609 |
+| Restaurants and accommodation services | 3.246 | 3.348 |
+| Education services | 3.513 | 3.333 |
+| Paan, tobacco and intoxicants | 2.380 | 2.989 |
+| Recreation, sport and culture | 1.547 | 1.516 |
+
+These are the weights for the non-food leg. **Item-level weights are also published** — the monthly release itself carries them in its high/low inflation tables (e.g. Onion 0.7006, Potato 0.7549, Tomato 0.4961, Arhar/Tur 0.5333), and the full item list is on `mospi.gov.in` per FAQ Q12.
+
+### CFPI — the official food index
+
+MOSPI publishes a **Consumer Food Price Index** alongside headline (Jan-2026: Rural 1.96, Urban 2.44, Combined 2.13), with a monthly index level series in the release. CFPI is the canonical food inflation number and is a cleaner target for the food leg than reconstructing the F&B division ourselves. The food leg targets CFPI; the F&B division weight is used for the headline roll-up.
 
 **Why this matters strategically:** CPI 2024 itself now ingests e-commerce prices — 12 online markets across towns above 25 lakh population, collected weekly, plus explicit "alternative data sources… e-commerce/online price data" (FAQ Q14, Q26). This modestly erodes the novelty of an Amazon basket but materially *raises* the correlation we should expect, because the target now contains online prices.
 
@@ -133,9 +170,13 @@ Pure functions, no network, fully unit-testable against hand-computed examples. 
 
 ### F2 — Official CPI 2024 weights (P0)
 
-Replace 2012-derived basket weights with official CPI 2024 item weights. Carry provenance in code so the base year is never ambiguous again. Export `CPI_FOOD_WEIGHT = 0.3675`.
+Replace 2012-derived basket weights with official CPI 2024 weights. Carry provenance in code so the base year is never ambiguous again.
 
-**Done when:** basket weights trace to a cited MOSPI source; `basket_weights.py` exposes base year and retrieval date; weight sum asserted.
+- All 12 division weights (table in §4) — needed for the non-food leg.
+- `CPI_FOOD_WEIGHT = 0.36753`, `CPI_NONFOOD_WEIGHT = 0.63247`.
+- Item-level weights where published; renormalised within the basket.
+
+**Done when:** weights trace to a cited MOSPI source with retrieval date; `basket_weights.py` exposes base year; division weights sum to 100.0 ± 0.01 under test; basket weights sum asserted.
 
 ### F3 — Base-aware CPI decomposer (P0, adjacent bug)
 
@@ -157,9 +198,9 @@ The non-food leg needs published **group-level indices**, not just headline and 
 
 ### F6 — Nowcast model (P0)
 
-- **Food leg:** basket index → CPI F&B YoY. Monthly-average prices → YoY → fitted mapping with lags.
-- **Non-food leg:** AR / persistence model on published non-food group indices.
-- **Combination:** official weights, `0.3675 / 0.6325`.
+- **Food leg:** basket index → **CFPI** YoY (the official food index, not a self-reconstructed F&B division). Monthly-average prices → YoY → fitted mapping with lags.
+- **Non-food leg:** AR / persistence model on published non-food division indices.
+- **Combination:** official weights, `0.36753 / 0.63247`.
 
 Deliberately few parameters. With ~200 monthly observations since 2009, OLS with 2–3 regressors is appropriate; anything heavier overfits.
 
@@ -171,7 +212,7 @@ Walk-forward, out-of-sample: fit to month M, predict M+1, roll.
 
 - **Metrics:** RMSE, MAE, directional hit rate, full error distribution — reported per leg (food, non-food, combined headline).
 - **Benchmarks:** random walk, seasonal naive, AR(1). A nowcast that cannot beat "last month's rate persists" is not a product, and we report the comparison whichever way it falls.
-- **Series break:** fit structure on the long 2012-base era; report 2024-base performance **separately**, with explicit caveat that it is ~7 months of out-of-sample evidence (Jan–Jul 2026). A short honest track record beats a long misleading one.
+- **Series break:** headline uses MOSPI's official linked back series (Combined LF 0.5267). The food leg is fitted and reported per regime, never pooled — MOSPI permits linking only at general-index level. 2024-base food performance carries an explicit caveat that it rests on ~7 months (Jan–Jul 2026). A short honest track record beats a long misleading one.
 
 **Done when:** `backtest.py` emits a metrics table for current vs revised methodology, so F1–F2's effect is measured rather than asserted.
 
@@ -196,7 +237,14 @@ Replace the two-charts-different-scales panel with: the headline nowcast, its er
 The protocol *is* the product claim. It is specified before any model is fitted, so results cannot be selected after the fact.
 
 1. **Split:** walk-forward only. No fitting on data later than the prediction month.
-2. **Regimes:** 2012-base era (2009 → Dec 2025) and 2024-base era (Jan 2026 →) reported separately. Never pooled into a single headline number.
+2. **Regimes, constrained by what MOSPI permits linking.** This is not a stylistic choice — MOSPI states the two series link only at general-index level:
+
+   | Leg | Pre-2026 backtest | Basis |
+   |---|---|---|
+   | Headline | **Available** | Official linked back series, General Index Jan-2013 → Dec-2024, Combined linking factor 0.5267 |
+   | Food (CFPI) | **Not available across the break** | No linkable food series exists; CPI 2012 food and CPI 2024 F&B are different constructs |
+
+   So the food leg is validated on the 2012-base era and the 2024-base era *separately*, never pooled. The headline leg can use the official linked series. Any pooled food statistic would be an artifact of our own linking assumption, not a measurement — we do not produce one.
 3. **Benchmarks:** random walk, seasonal naive, AR(1) — all on the same splits.
 4. **Reporting:** per-leg and combined. Point estimates always accompanied by error distribution.
 5. **Publication rule:** if the revised methodology does not beat the benchmark out-of-sample, that is stated in the UI, not hidden.
@@ -260,7 +308,7 @@ The protocol *is* the product claim. It is specified before any model is fitted,
 
 ## 11. Open questions
 
-1. **Official item-level weights** — FAQ Q12 says they are published on `mospi.gov.in` and `cpi.mospi.gov.in`. The latter timed out from this environment. If item-level weights prove unreachable, we fall back to published *group*-level weights and document the approximation rather than silently reverting to 2012 shares.
+1. ~~**Official item-level weights**~~ — **resolved 2026-08-05.** All 12 division weights recovered from MOSPI's first 2024-base release (Annexure V Q39) and recorded in §4. Selected item weights are published in each monthly release. The full item list on `cpi.mospi.gov.in` remains unreachable from this environment; if it stays unreachable, basket item weights are renormalised within-division from the published items and the approximation is documented in `basket_weights.py` rather than silently assumed.
 2. **DoCA centre selection** — national average, or Delhi (110001) to match the existing Amazon pincode? Matching the Amazon geography makes the two indices comparable; the national average tracks national CPI better. Recommend national for the backbone, Delhi as a diagnostic series.
 3. **38-commodity expansion** — DoCA expanded from 22 to 38 monitored commodities. Whether the added items improve basket coverage enough to justify re-deriving weights is a Phase 2 question, answered with data.
 4. **Amazon's weight in the published nowcast** — should be *fitted* once it has history, not asserted. Until then it is a diagnostic overlay, not a model input.
