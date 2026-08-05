@@ -50,3 +50,27 @@ def jevons_elementary(
         raise ValueError("no usable quote pairs (all non-positive)")
 
     return math.exp(sum(log_relatives) / len(log_relatives))
+
+
+def young_aggregate(
+    relatives: Mapping[str, float],
+    weights: Mapping[str, float],
+) -> float:
+    """
+    Young / modified Laspeyres aggregation — weighted arithmetic mean of
+    elementary price relatives, expressed as an index level (base = 100).
+
+    Only keys present in BOTH mappings contribute. A relative with no
+    weight cannot be aggregated; a weight with no relative has nothing to
+    contribute this period.
+
+    Returns an index level (110.0 == 10% above base).
+    """
+    shared = relatives.keys() & weights.keys()
+
+    total_weight = sum(weights[k] for k in shared)
+    if total_weight <= 0:
+        raise ValueError("zero total weight — nothing to aggregate")
+
+    weighted = sum(weights[k] * relatives[k] for k in shared)
+    return (weighted / total_weight) * 100.0
