@@ -1064,3 +1064,38 @@ git commit -m "chore(macro-pulse): phase 1 index foundations complete"
 | Phase 2 | F4 DoCA ingestion, F5 MOSPI group-level extraction, schema changes |
 | Phase 3 | F7 backtest harness, F8 product identity + chaining wire-up, F6 nowcast model |
 | Phase 4 | F9 nowcast UI |
+
+---
+
+### Task 9: Wire base-aware decomposition into production (added during execution)
+
+**Not in the original plan.** Code review of Tasks 5–6 found the base-aware decomposer was correct in isolation but unreachable from the running app. This is a gap in the plan as written, not in its implementation — Task 6's own verification step only exercised `decompose_cpi` directly with an explicit `reference_month`, so it could not have caught this.
+
+**What was wrong:**
+
+| # | Finding | Severity |
+|---|---|---|
+| 1 | Neither production caller passed `reference_month`, so the documented default applied 2012 weights to every 2026 release. The live bug was untouched. | Critical |
+| 2 | `decompose_cpi` raised `TypeError` on `fuel_yoy=None` — and **every** 2026 release has `fuel_yoy: null`. Wiring the callers without fixing this would have crashed the app on real data. Pre-existing, but directly in the path of this work. | Critical |
+| 3 | `seed/historical_data.py` guarded on `food is not None and fuel is not None`, so 2026 releases had decomposition **skipped entirely** — `core_yoy`, `food_contrib`, `fuel_contrib`, `core_contrib` all stored as `None`. Not merely mis-weighted: absent. | Critical |
+| 4 | `core_weight = 1 - food_weight - 0.0684` regardless of base. Under COICOP 2018 there is no "Fuel & Light" division, so this produced `0.56407`, reconciling to no published MOSPI aggregate. | Important |
+| 5 | `base_year` inferred by float-comparing weights rather than deriving from the date. | Important |
+| 6 | `ui/cpi_view.py` gated the contributions chart on all three components being non-`None`, so correct 2026 data still rendered nothing. | Important |
+
+**Resolution:**
+
+- Both callers (`ai/flash_brief.py`, `seed/historical_data.py`) now pass `reference_month`.
+- `fuel_yoy` is `Optional`. Under the 2024 base — or whenever fuel is absent — the decomposition is food vs non-food, `fuel_contrib` is `None`, and core divides by the **official 0.63247 non-food share** rather than a fabricated residual. A new `core_definition` key states which split applies (`"ex-food"` vs `"ex-food-and-fuel"`) so no consumer has to infer it.
+- `base_year_for_month()` derives the era from the date directly.
+- The seed guard is now `food is not None`, restoring decomposition for 2026 releases.
+- The UI charts whichever components exist, labelling core as "Core (ex-food)" when fuel is unavailable.
+
+**Effect on the real May-2026 print** (headline 4.38, food 5.32, fuel `None`):
+
+| | Before | After |
+|---|---|---|
+| Decomposition stored | *none — skipped* | food 1.96 / core 2.42 |
+| `core_weight` | 0.56407 (no MOSPI equivalent) | **0.63247** (official non-food share) |
+| `core_yoy` | 4.29 | **3.83** |
+
+**Also fixed in passing:** two pre-existing `test_flash_brief.py` fixtures used `"March 2025"` as a reference month. That was never validated before, because the value was only interpolated into prompt text and never reached `decompose_cpi`. Corrected to `"2025-03"`, matching what `CPIStore` actually holds.
