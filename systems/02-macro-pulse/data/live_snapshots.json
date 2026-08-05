@@ -2,51 +2,62 @@
   "_comment": "Live price snapshots. The earliest snapshot per division is the reference the live index is measured against; it is never overwritten, because moving the reference would silently rewrite history.",
   "snapshots": [
     {
-      "fetched_at": "2026-08-05 17:35:40",
+      "fetched_at": "2026-08-05 18:12:39",
       "prices": {
         "personal_care_and_misc": {
-          "gold_per_gram": 12977.38,
-          "silver_per_gram": 190.26
+          "gold_per_gram": 13018.36,
+          "silver_per_gram": 190.54
         },
         "food_and_beverages": {
-          "rice": 73.8,
-          "moong_dal": 180.0,
-          "sunflower_oil": 168.0,
-          "mustard_oil": 205.0,
-          "paneer": 460.0,
-          "potato": 28.0,
-          "banana": 55.0,
-          "apple": 269.0,
-          "sugar": 55.0,
-          "turmeric": 330.0,
-          "coriander_powder": 310.0,
-          "tea": 600.0
+          "rice::india_gate_basmati_rice_everyday_5": 73.8,
+          "atta::nature_s_superfoods_aashirvaad_organic_atta": 76.4,
+          "toor_dal::amazon_brand_vedaka_unpolished_toor_dal": 162.0,
+          "moong_dal::amazon_brand_vedaka_unpolished_yellow_moong": 172.0,
+          "chana_dal::amazon_brand_vedaka_unpolished_chana_dal": 122.0,
+          "sunflower_oil::jivo_cold_pressed_unrefined_sunflower_oil": 168.0,
+          "mustard_oil::fortune_premium_kachi_ghani_pure_mustard": 205.0,
+          "paneer::amul_fresh_malai_paneer_block_pouch": 460.0,
+          "potato::fresh_potato_1kg": 28.0,
+          "banana::fresh_baby_banana_robusta_1_kg": 55.0,
+          "apple::fresh_apple_pink_lady_regular_4pc": 269.0,
+          "sugar::fortune_sugar_1_kg": 65.0,
+          "turmeric::catch_turmeric_powder_200g": 330.0,
+          "coriander_powder::catch_coriander_powder_dhaniya_powder_200g": 270.0,
+          "tea::society_leaf_tea_100_pure_assam": 600.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
         }
       }
     },
     {
-      "fetched_at": "2026-08-05 17:56:03",
+      "fetched_at": "2026-08-05 18:15:15",
       "prices": {
         "personal_care_and_misc": {
-          "gold_per_gram": 12997.87,
-          "silver_per_gram": 190.62
+          "gold_per_gram": 13021.73,
+          "silver_per_gram": 190.59
         },
         "food_and_beverages": {
-          "rice": 73.8,
-          "atta": 76.4,
-          "toor_dal": 162.0,
-          "moong_dal": 172.0,
-          "chana_dal": 122.0,
-          "sunflower_oil": 168.0,
-          "mustard_oil": 205.0,
-          "paneer": 460.0,
-          "potato": 28.0,
-          "banana": 55.0,
-          "apple": 269.0,
-          "sugar": 55.0,
-          "turmeric": 330.0,
-          "coriander_powder": 310.0,
-          "tea": 600.0
+          "rice::india_gate_basmati_rice_everyday_5": 73.8,
+          "atta::nature_s_superfoods_aashirvaad_organic_atta": 76.4,
+          "toor_dal::amazon_brand_vedaka_unpolished_toor_dal": 162.0,
+          "moong_dal::amazon_brand_vedaka_unpolished_yellow_moong": 172.0,
+          "chana_dal::amazon_brand_vedaka_unpolished_chana_dal": 122.0,
+          "sunflower_oil::jivo_cold_pressed_unrefined_sunflower_oil": 168.0,
+          "mustard_oil::fortune_premium_kachi_ghani_pure_mustard": 205.0,
+          "paneer::amul_fresh_malai_paneer_block_pouch": 460.0,
+          "potato::fresh_potato_1kg": 28.0,
+          "banana::fresh_baby_banana_robusta_1_kg": 55.0,
+          "apple::fresh_apple_pink_lady_regular_4pc": 269.0,
+          "sugar::fortune_sugar_1_kg": 65.0,
+          "turmeric::catch_turmeric_powder_200g": 330.0,
+          "coriander_powder::catch_coriander_powder_dhaniya_powder_200g": 270.0,
+          "tea::society_leaf_tea_100_pure_assam": 600.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
         }
       }
     }

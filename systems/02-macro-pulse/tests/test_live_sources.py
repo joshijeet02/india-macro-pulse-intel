@@ -139,12 +139,13 @@ def test_a_failing_fetcher_does_not_break_the_others(store, monkeypatch):
 def test_grocery_returns_items_not_a_pre_averaged_number(monkeypatch):
     """Pre-averaging is what would reintroduce composition contamination."""
     fake = [
-        {"item_id": "rice", "price": 369.0, "price_per_kg": 74.0},
-        {"item_id": "atta", "price": 382.0, "price_per_kg": 76.0},
+        {"item_id": "rice", "price": 369.0, "price_per_kg": 74.0, "item_name": "India Gate Rice 5kg"},
+        {"item_id": "atta", "price": 382.0, "price_per_kg": 76.0, "item_name": "Aashirvaad Atta 5kg"},
     ]
     monkeypatch.setattr("scrapers.amazon.scrape_amazon", lambda basket: fake)
-    got = live_sources.fetch_grocery_prices()
-    assert got == {"food_and_beverages": {"rice": 74.0, "atta": 76.0}}
+    got = live_sources.fetch_grocery_prices()["food_and_beverages"]
+    assert sorted(got.values()) == [74.0, 76.0]
+    assert all("::" in k for k in got), "keys must carry product identity"
 
 
 def test_grocery_returns_nothing_when_the_scrape_fails(monkeypatch):
@@ -154,12 +155,14 @@ def test_grocery_returns_nothing_when_the_scrape_fails(monkeypatch):
 
 def test_grocery_skips_unusable_rows(monkeypatch):
     fake = [
-        {"item_id": "rice", "price": 100.0, "price_per_kg": 100.0},
-        {"item_id": "atta", "price": 0.0, "price_per_kg": 0.0},
-        {"item_id": "not_in_basket", "price": 999.0, "price_per_kg": 999.0},
+        {"item_id": "rice", "price": 100.0, "price_per_kg": 100.0, "item_name": "India Gate Rice 5kg"},
+        {"item_id": "atta", "price": 0.0, "price_per_kg": 0.0, "item_name": "Aashirvaad Atta 5kg"},
+        {"item_id": "not_in_basket", "price": 999.0, "price_per_kg": 999.0, "item_name": "Nope"},
     ]
     monkeypatch.setattr("scrapers.amazon.scrape_amazon", lambda basket: fake)
-    assert live_sources.fetch_grocery_prices() == {"food_and_beverages": {"rice": 100.0}}
+    got = live_sources.fetch_grocery_prices()["food_and_beverages"]
+    assert list(got.values()) == [100.0]
+    assert list(got)[0].startswith("rice::")
 
 
 def test_bullion_returns_gold_and_silver_separately(monkeypatch):
@@ -178,8 +181,19 @@ def test_bullion_needs_gold_at_minimum(monkeypatch):
     assert live_sources.fetch_bullion_prices() == {}
 
 
-def test_fuel_returns_nothing_rather_than_a_fabricated_price():
-    """No live source wired yet — transport stays honestly marked 'carried'."""
+def test_fuel_maps_to_the_transport_division(monkeypatch):
+    monkeypatch.setattr(
+        "scrapers.fuel.fetch_fuel",
+        lambda: {"petrol_per_litre": 102.12, "diesel_per_litre": 95.20},
+    )
+    assert live_sources.fetch_fuel_prices() == {
+        "transport": {"petrol_per_litre": 102.12, "diesel_per_litre": 95.20}
+    }
+
+
+def test_fuel_returns_nothing_rather_than_a_fabricated_price(monkeypatch):
+    """With no usable price, transport stays honestly marked 'carried'."""
+    monkeypatch.setattr("scrapers.fuel.fetch_fuel", lambda: {})
     assert live_sources.fetch_fuel_prices() == {}
 
 
@@ -291,3 +305,60 @@ def test_gap_is_none_without_snapshots():
 def test_gap_degrades_on_a_malformed_timestamp():
     bad = [{"fetched_at": "not a date", "prices": {"x": {"a": 1.0}}}]
     assert live_sources.unmeasured_gap("2026-06", bad) is None
+
+
+# ── product identity ────────────────────────────────────────────────────────
+
+def test_product_key_separates_different_products_in_the_same_slot():
+    """
+    Keying on item_id alone was measurably wrong: on two live snapshots taken
+    MINUTES apart, 14 of 15 items were flat while `rice` moved -17.82% —
+    because the scraper had matched a different rice. Keyed by slot that reads
+    as a price collapse; keyed by product it is a substitution.
+    """
+    india_gate = live_sources.product_key("rice", "India Gate Basmati Rice Everyday 5 kg")
+    fortune = live_sources.product_key("rice", "Fortune Everyday Basmati Rice 5kg")
+    assert india_gate != fortune
+
+
+def test_product_key_tolerates_trailing_title_noise():
+    """Listings gain and lose qualifiers constantly; that is not a new product."""
+    base = live_sources.product_key("rice", "India Gate Basmati Rice Everyday 5 kg")
+    for variant in (
+        "India Gate Basmati Rice Everyday 5 kg (Pack of 1)",
+        "India Gate Basmati Rice Everyday 5 kg | Long Grain",
+        "India Gate  Basmati  Rice  Everyday  5  kg",
+    ):
+        assert live_sources.product_key("rice", variant) == base, variant
+
+
+def test_product_key_keeps_the_basket_slot():
+    assert live_sources.product_key("rice", "Anything").startswith("rice::")
+
+
+def test_product_key_handles_a_missing_name():
+    assert live_sources.product_key("rice", "") == "rice::"
+    assert live_sources.product_key("rice", None) == "rice::"
+
+
+def test_a_substitution_contributes_to_no_link():
+    """
+    The matched-model principle: a changed good is a new series, not a price
+    movement. The substituted product simply fails to match.
+    """
+    old_rice = live_sources.product_key("rice", "India Gate Basmati Rice Everyday 5 kg")
+    new_rice = live_sources.product_key("rice", "Fortune Everyday Basmati Rice 5kg")
+    atta = live_sources.product_key("atta", "Aashirvaad Atta 5kg")
+
+    earlier = {old_rice: 89.80, atta: 76.40}
+    later = {new_rice: 73.80, atta: 76.40}      # rice "fell" 17.8% by substitution
+    assert live_sources.link_relative(earlier, later) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_grocery_keys_carry_product_identity(monkeypatch):
+    fake = [{"item_id": "rice", "price": 369.0, "price_per_kg": 74.0,
+             "item_name": "India Gate Basmati Rice Everyday 5 kg"}]
+    monkeypatch.setattr("scrapers.amazon.scrape_amazon", lambda basket: fake)
+    got = live_sources.fetch_grocery_prices()["food_and_beverages"]
+    assert list(got) == ["rice::india_gate_basmati_rice_everyday_5"]
+    assert list(got.values()) == [74.0]

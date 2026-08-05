@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -27,6 +28,11 @@ from typing import Callable, Optional
 log = logging.getLogger(__name__)
 
 SNAPSHOT_PATH = Path(__file__).parent.parent / "data" / "live_snapshots.json"
+
+# Tokens of the product title that form its identity. Six: enough to tell
+# India Gate basmati from Fortune basmati, few enough that a trailing
+# "(Pack of 1)" does not fork the series.
+PRODUCT_KEY_TOKENS = 6
 
 # A fetcher returns {division_key: {item_id: price}} or {} on failure.
 #
@@ -61,17 +67,43 @@ def fetch_bullion_prices() -> dict:
     return {"personal_care_and_misc": items}
 
 
+def product_key(item_id: str, product_name: str) -> str:
+    """
+    Identity for one tracked product: the basket slot plus the product itself.
+
+    Keying on `item_id` alone was wrong, and measurably so. Amazon returns a
+    different product for the same search between runs, and on a live pair of
+    snapshots taken MINUTES apart 14 of 15 items were flat while `rice` moved
+    -17.82% — because the scraper had matched a different rice. Keyed by slot
+    that reads as a price collapse; keyed by product it is what it actually is,
+    a substitution.
+
+    Including the product name means a substituted product simply fails to
+    match, so it contributes to no link and the replacement starts its own
+    series from that point. That is the matched-model principle every price
+    index depends on: compare like with like, and treat a changed good as a
+    new series rather than a price movement.
+
+    Only the first PRODUCT_KEY_TOKENS alphanumeric tokens are used. Listings
+    grow and lose trailing qualifiers constantly — "(Pack of 1)", "| Whole
+    Wheat", marketing suffixes — and treating those as a new product would
+    break a series that never actually changed. Tested against real scraped
+    titles: six tokens absorbs those variants while still separating
+    genuinely different products such as India Gate from Fortune basmati.
+    """
+    tokens = re.findall(r"[a-z0-9]+", (product_name or "").lower())
+    return f"{item_id}::{'_'.join(tokens[:PRODUCT_KEY_TOKENS])}"
+
+
 def fetch_grocery_prices() -> dict:
     """
-    The 20-item grocery basket -> food_and_beverages, priced per item.
+    The 20-item grocery basket -> food_and_beverages, priced per product.
 
-    Per-item rather than pre-averaged so the relative can be taken over items
-    present in both periods. Amazon throttles, so item sets genuinely differ
-    between fetches; averaging first would turn that into a phantom price move.
+    Keys carry product identity, not just the basket slot, so a substitution
+    cannot masquerade as a price change. See `product_key`.
     """
-    from engine.ecomm_basket import BASKET_BY_ID
+    from engine.ecomm_basket import BASKET, BASKET_BY_ID
     from scrapers.amazon import scrape_amazon
-    from engine.ecomm_basket import BASKET
 
     observations = scrape_amazon(BASKET)
     if not observations:
@@ -83,24 +115,25 @@ def fetch_grocery_prices() -> dict:
             continue
         price = row.get("price_per_kg") or row.get("price")
         if price and price > 0:
-            items[row["item_id"]] = float(price)
+            items[product_key(row["item_id"], row.get("item_name", ""))] = float(price)
     return {"food_and_beverages": items} if items else {}
 
 
 def fetch_fuel_prices() -> dict:
     """
-    Retail petrol and diesel -> transport.
+    Delhi retail petrol and diesel -> transport.
 
-    Pump prices are revised daily by the oil marketing companies and are the
-    cleanest high-frequency series in the whole index. They are also the main
-    channel through which a crude shock reaches CPI.
+    Pump prices are revised daily and are the main channel through which a
+    crude or geopolitical shock reaches CPI, which makes them worth more than
+    their 8.8% division weight suggests.
 
-    Not yet wired to a live source: the OMC pages are JS-rendered and
-    data.gov.in's fuel resource needs an API key. Returning {} keeps transport
-    honestly marked as carried rather than silently assumed flat under a
-    fabricated price.
+    Delhi to match the grocery basket's pincode, so both signals describe the
+    same geography rather than being quietly averaged across different cities.
     """
-    return {}
+    from scrapers.fuel import fetch_fuel
+
+    prices = fetch_fuel()
+    return {"transport": prices} if prices else {}
 
 
 FETCHERS: dict[str, Fetcher] = {
