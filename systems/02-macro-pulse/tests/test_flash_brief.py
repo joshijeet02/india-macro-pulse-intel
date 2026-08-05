@@ -17,7 +17,7 @@ def test_generate_cpi_brief_calls_api():
     expected = "March CPI came in at 3.34%, a significant beat below consensus of 3.70%."
     with patch("ai.flash_brief._client", return_value=_mock_client(expected)):
         result = generate_cpi_brief(
-            reference_month="March 2025",
+            reference_month="2025-03",
             headline_yoy=3.34,
             food_yoy=2.69,
             fuel_yoy=-1.67,
@@ -51,7 +51,7 @@ def test_cpi_brief_missing_api_key_raises():
     try:
         with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
             generate_cpi_brief(
-                reference_month="March 2025",
+                reference_month="2025-03",
                 headline_yoy=3.34,
                 food_yoy=2.69,
                 fuel_yoy=-1.67,

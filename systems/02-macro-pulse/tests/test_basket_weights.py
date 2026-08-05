@@ -52,3 +52,17 @@ def test_food_weight_for_month_selects_by_base_era():
 def test_food_weight_for_month_rejects_malformed_input():
     with pytest.raises(ValueError, match="YYYY-MM"):
         food_weight_for_month("June 2026")
+
+
+def test_base_year_for_month_derives_from_date():
+    from engine.basket_weights import base_year_for_month
+    assert base_year_for_month("2026-01") == "2024"
+    assert base_year_for_month("2026-07") == "2024"
+    assert base_year_for_month("2025-12") == "2012"
+    assert base_year_for_month("2009-01") == "2012"
+
+
+def test_base_year_for_month_rejects_malformed_input():
+    from engine.basket_weights import base_year_for_month
+    with pytest.raises(ValueError, match="YYYY-MM"):
+        base_year_for_month("2026")

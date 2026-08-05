@@ -72,3 +72,38 @@ def test_omitting_reference_month_defaults_to_2012_base():
     result = decompose_cpi(5.0, 6.0, 3.0)
     assert result["base_year"] == "2012"
     assert result["food_contrib"] == pytest.approx(2.75, abs=0.01)
+
+
+def test_fuel_none_does_not_crash_and_reports_ex_food_core():
+    result = decompose_cpi(4.38, 5.32, None, reference_month="2026-05")
+    assert result["fuel_contrib"] is None
+    assert result["core_definition"] == "ex-food"
+    assert result["food_contrib"] == pytest.approx(1.96, abs=0.01)
+    assert result["core_contrib"] == pytest.approx(2.42, abs=0.01)
+
+
+def test_2024_base_core_uses_official_nonfood_weight():
+    # core_yoy = core_contrib / 0.63247, NOT / (1 - 0.36753 - 0.0684)
+    result = decompose_cpi(4.38, 5.32, None, reference_month="2026-05")
+    assert result["core_yoy"] == pytest.approx(3.83, abs=0.01)
+
+
+def test_2024_base_drops_fuel_even_when_fuel_supplied():
+    # No 'Fuel & Light' division exists under COICOP 2018.
+    result = decompose_cpi(5.0, 6.0, 3.0, reference_month="2026-01")
+    assert result["fuel_contrib"] is None
+    assert result["core_definition"] == "ex-food"
+
+
+def test_2012_base_with_fuel_keeps_three_way_split():
+    result = decompose_cpi(5.0, 6.0, 3.0, reference_month="2025-12")
+    assert result["fuel_contrib"] == pytest.approx(0.21, abs=0.01)
+    assert result["core_definition"] == "ex-food-and-fuel"
+    assert result["base_year"] == "2012"
+
+
+def test_2012_base_with_fuel_none_falls_back_to_ex_food():
+    result = decompose_cpi(5.0, 6.0, None, reference_month="2025-12")
+    assert result["fuel_contrib"] is None
+    assert result["core_definition"] == "ex-food"
+    assert result["base_year"] == "2012"

@@ -297,8 +297,16 @@ def seed():
         if headline is None:
             print(f"  SKIP CPI {ref_month}: missing headline_yoy")
             continue
-        if food is not None and fuel is not None:
-            dec = decompose_cpi(headline=headline, food_yoy=food, fuel_yoy=fuel)
+        # fuel may be None under the 2024=100 base — decompose_cpi handles
+        # that and reports core as the ex-food residual. Previously this
+        # guard skipped decomposition entirely for every 2026 release.
+        if food is not None:
+            dec = decompose_cpi(
+                headline=headline,
+                food_yoy=food,
+                fuel_yoy=fuel,
+                reference_month=ref_month,
+            )
             core_yoy     = dec["core_yoy"]
             food_contrib = dec["food_contrib"]
             fuel_contrib = dec["fuel_contrib"]

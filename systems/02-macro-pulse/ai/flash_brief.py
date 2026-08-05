@@ -29,7 +29,12 @@ def generate_cpi_brief(
     consensus: float,
 ) -> str:
     """Generate a 3-paragraph CPI flash brief via Claude."""
-    dec = decompose_cpi(headline=headline_yoy, food_yoy=food_yoy, fuel_yoy=fuel_yoy)
+    dec = decompose_cpi(
+        headline=headline_yoy,
+        food_yoy=food_yoy,
+        fuel_yoy=fuel_yoy,
+        reference_month=reference_month,
+    )
     surprise = compute_surprise(actual=headline_yoy, consensus=consensus, indicator="CPI")
 
     prompt = f"""CPI Flash Brief — {reference_month}

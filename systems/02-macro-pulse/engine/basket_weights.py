@@ -56,6 +56,10 @@ CPI_2024_DIVISIONS: dict[str, float] = {
 
 # The same divisions valued on the CPI 2012 series, for like-for-like
 # comparison. Source: same table, "CPI 2012" column.
+#
+# NOTE: food_and_beverages here (42.617) is the 2012 series restated on the
+# COICOP 2018 structure — NOT the 45.86 that the 2012 series published. See
+# CPI_2012_FOOD_WEIGHT below.
 CPI_2012_DIVISIONS: dict[str, float] = {
     "food_and_beverages":                42.617,
     "paan_tobacco_and_intoxicants":       2.380,
@@ -75,7 +79,15 @@ CPI_2012_DIVISIONS: dict[str, float] = {
 CPI_FOOD_WEIGHT = CPI_2024_DIVISIONS["food_and_beverages"] / 100.0   # 0.36753
 CPI_NONFOOD_WEIGHT = 1.0 - CPI_FOOD_WEIGHT                            # 0.63247
 
-# CPI 2012 series as it was actually published (group structure, not COICOP).
+# CPI 2012 series as it was actually published (six-group structure, not
+# COICOP). Source: MOSPI CPI 2012=100 weighting diagram, reproduced in the
+# 2024-base release's Annexure V Q39 comparison table. Retrieved 2026-08-05.
+#
+# NOTE: distinct from CPI_2012_DIVISIONS["food_and_beverages"] (42.617),
+# which is the SAME series restated on the COICOP 2018 structure. Use this
+# constant (45.86) to decompose a real pre-2026 release, because that is the
+# weight MOSPI actually applied at the time. The 3.24pp gap is
+# reclassification, not revision.
 CPI_2012_FOOD_WEIGHT = 0.4586
 CPI_2012_FUEL_WEIGHT = 0.0684
 
@@ -100,3 +112,18 @@ def food_weight_for_month(reference_month: str) -> float:
     if reference_month >= BASE_2024_FIRST_MONTH:
         return CPI_FOOD_WEIGHT
     return CPI_2012_FOOD_WEIGHT
+
+
+def base_year_for_month(reference_month: str) -> str:
+    """
+    Return the CPI base year ("2012" or "2024") a reference month belongs to.
+
+    Derived from the date, never by comparing weight values — two base years
+    could in principle share a weight, and a third base year would break any
+    equality-based inference.
+    """
+    if not _MONTH_RE.match(reference_month or ""):
+        raise ValueError(
+            f"reference_month must be YYYY-MM, got {reference_month!r}"
+        )
+    return "2024" if reference_month >= BASE_2024_FIRST_MONTH else "2012"
