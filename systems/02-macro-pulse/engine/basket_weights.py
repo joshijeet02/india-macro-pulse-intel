@@ -94,7 +94,10 @@ CPI_2012_FUEL_WEIGHT = 0.0684
 # First reference month compiled on the 2024=100 series.
 BASE_2024_FIRST_MONTH = "2026-01"
 
-_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+# Validates the month field too, not just the shape: "2026-13" is two digits
+# and would otherwise pass, then sort after "2026-01" and be silently treated
+# as a valid 2024-base month.
+_MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 def food_weight_for_month(reference_month: str) -> float:

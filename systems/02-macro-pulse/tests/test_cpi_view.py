@@ -107,3 +107,12 @@ def test_core_definition_recovered_for_stored_row():
     assert core_definition_of(stored) == "ex-food"
     stored_2012 = {"reference_month": "2025-12", "fuel_contrib": 0.21}
     assert core_definition_of(stored_2012) == "ex-food-and-fuel"
+
+
+def test_base_year_of_degrades_on_any_malformed_month():
+    """A display helper must never crash the page over a malformed field."""
+    from ui.cpi_view import base_year_of
+    for bad in ({}, {"reference_month": None}, {"reference_month": ""},
+                {"reference_month": "garbage"}, {"reference_month": "2026"},
+                {"reference_month": "2026-13"}, {"reference_month": 202605}):
+        assert base_year_of(bad) == "2012"

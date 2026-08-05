@@ -66,3 +66,19 @@ def test_base_year_for_month_rejects_malformed_input():
     from engine.basket_weights import base_year_for_month
     with pytest.raises(ValueError, match="YYYY-MM"):
         base_year_for_month("2026")
+
+
+def test_month_validator_rejects_impossible_months():
+    """
+    "2026-13" is two digits and would pass a shape-only regex, then sort after
+    "2026-01" and be silently accepted as a valid 2024-base month.
+    """
+    from engine.basket_weights import base_year_for_month
+    for bad in ("2026-13", "2026-00", "2026-99"):
+        with pytest.raises(ValueError, match="YYYY-MM"):
+            food_weight_for_month(bad)
+        with pytest.raises(ValueError, match="YYYY-MM"):
+            base_year_for_month(bad)
+    # boundaries remain valid
+    assert food_weight_for_month("2026-12") == pytest.approx(0.36753, abs=1e-9)
+    assert food_weight_for_month("2025-01") == pytest.approx(0.4586, abs=1e-9)

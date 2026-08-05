@@ -39,7 +39,10 @@ def base_year_of(decomposition: dict) -> str:
     if reference_month:
         try:
             return base_year_for_month(reference_month)
-        except ValueError:
+        except (ValueError, TypeError):
+            # TypeError covers a non-string month (re.match rejects it before
+            # base_year_for_month can raise ValueError). A display helper must
+            # never crash the page over a malformed field.
             pass
     return "2012"
 
