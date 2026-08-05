@@ -9,8 +9,23 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 
 @st.cache_resource(show_spinner=False)
-def _ensure_playwright_chromium() -> tuple[bool, str]:
-    """Install Playwright Chromium once per container lifecycle. Returns (ok, error_msg)."""
+def ensure_playwright_chromium() -> tuple[bool, str]:
+    """
+    Install Playwright Chromium, once per container lifecycle.
+
+    Called LAZILY — only when someone actually presses "Run Price Scrape" —
+    never at import time.
+
+    This used to run at module level, before a single pixel rendered. It
+    downloads roughly 150 MB, so every cold container start left a visitor
+    staring at Streamlit's "taking longer than normal" screen for minutes
+    before seeing anything. Verified in a browser against the deployed app.
+
+    Nothing on the page needs a browser: the live index, the CPI and IIP
+    tabs, the release calendar and the nowcast are all plain HTTP or local
+    computation. Only the Amazon scrape needs Chromium, and that is a
+    deliberate button press where a wait is expected and explained.
+    """
     result = subprocess.run(
         [sys.executable, "-m", "playwright", "install", "chromium"],
         capture_output=True,
@@ -18,9 +33,6 @@ def _ensure_playwright_chromium() -> tuple[bool, str]:
         env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": "/tmp/pw-browsers"},
     )
     return result.returncode == 0, result.stderr.strip()
-
-
-_pw_ready, _pw_err = _ensure_playwright_chromium()
 
 from db.schema import init_db
 from db.store import CPIStore
@@ -137,4 +149,4 @@ with tab_brief:
     render_brief_section()
 
 with tab_ecomm:
-    render_ecomm_section(_pw_ready, _pw_err)
+    render_ecomm_section(ensure_playwright_chromium)

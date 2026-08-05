@@ -70,11 +70,76 @@ RELEASE_SCHEDULE: list[ScheduledRelease] = [
 ]
 
 
+# MOSPI publishes on a fixed rule: CPI on the 12th of the following month,
+# IIP on the 28th, each shifted to the next weekday if it lands on a weekend.
+# Verified against every release date we hold — six for six, exact.
+_PUBLICATION_DAY = {"CPI": 12, "IIP": 28}
+_MONTH_ABBR = {v: k for k, v in _MONTH_TO_NUM.items()}
+
+
+def _publication_date(indicator: str, year: int, month: int) -> date:
+    """When MOSPI publishes the release for a given reference month."""
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    published = date(next_year, next_month, _PUBLICATION_DAY[indicator])
+    while published.weekday() >= 5:          # Sat/Sun -> next weekday
+        published += timedelta(days=1)
+    return published
+
+
+def generate_schedule(as_of: date, months_ahead: int = 6) -> list[ScheduledRelease]:
+    """
+    Derive upcoming releases from the publication rule.
+
+    The hardcoded RELEASE_SCHEDULE below stops at July 2026, so from August
+    onward the calendar rendered "No releases scheduled in the next 90 days" —
+    which reads as a broken app rather than a missing list. Generating from the
+    rule means it never runs out and never needs editing.
+
+    RELEASE_SCHEDULE is retained for the historical record; generated entries
+    cover the future.
+    """
+    generated: list[ScheduledRelease] = []
+    for indicator in ("CPI", "IIP"):
+        # Start a month BACK: the release published this month covers last
+        # month. Starting at the current month skipped the imminent one —
+        # on 5 August that dropped July's CPI, due on the 12th, which is
+        # precisely the release a visitor most wants to see.
+        year, month = (as_of.year - 1, 12) if as_of.month == 1 else (as_of.year, as_of.month - 1)
+        for _ in range(months_ahead + 3):
+            published = _publication_date(indicator, year, month)
+            if published >= as_of:
+                generated.append(
+                    ScheduledRelease(
+                        indicator,
+                        f"{_MONTH_ABBR[month]}-{year}",
+                        published,
+                    )
+                )
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return generated
+
+
 def get_upcoming_releases(as_of: date = None, days_ahead: int = 60) -> list[ScheduledRelease]:
+    """
+    Upcoming releases, from the hardcoded list plus the generated rule.
+
+    Generated entries fill in wherever the hardcoded list has run out, so the
+    calendar keeps working without anyone maintaining a table of dates.
+    """
     if as_of is None:
         as_of = date.today()
     cutoff = as_of + timedelta(days=days_ahead)
-    return [r for r in RELEASE_SCHEDULE if as_of <= r.expected_date <= cutoff]
+
+    upcoming = {
+        (r.indicator, r.reference_period): r
+        for r in RELEASE_SCHEDULE
+        if as_of <= r.expected_date <= cutoff
+    }
+    for r in generate_schedule(as_of, months_ahead=(days_ahead // 30) + 2):
+        if as_of <= r.expected_date <= cutoff:
+            upcoming.setdefault((r.indicator, r.reference_period), r)
+
+    return sorted(upcoming.values(), key=lambda r: r.expected_date)
 
 
 def days_until(release: ScheduledRelease, as_of: date = None) -> int:

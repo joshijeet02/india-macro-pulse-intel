@@ -22,7 +22,16 @@ from engine.ecomm_index import compute_index, group_summary
 DEV_MODE = os.environ.get("MACRO_PULSE_DEV", "").lower() in ("1", "true", "yes")
 
 
-def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
+def render_ecomm_section(ensure_browser=None):
+    """
+    `ensure_browser` is a callable that installs Chromium and returns
+    (ok, error). It is invoked only when a scrape is actually requested.
+
+    Passing the callable rather than a pre-computed (ready, error) pair is the
+    whole point: the previous signature forced the install to run at app boot
+    to produce those values, which cost every visitor a multi-minute wait on a
+    cold container for a browser most of them never use.
+    """
     store = EcommStore()
 
     st.markdown(
@@ -41,13 +50,6 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
         "visitor sessions stay below Amazon's anti-bot radar much better than a scheduled cron."
     )
 
-
-    # ── Playwright status warning ────────────────────────────────────────────
-    if not pw_ready:
-        st.warning(
-            f"Browser setup issue — scraping may fail. Error: `{pw_err or 'unknown'}`\n\n"
-            "If this persists on Streamlit Cloud, check `packages.txt` and redeploy."
-        )
 
     # ── Scrape controls ──────────────────────────────────────────────────────
     col_btn, col_btn2, col_status = st.columns([1, 1.5, 2.5])
@@ -83,6 +85,17 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
     # ── Run scrape — save to session_state, THEN rerun ───────────────────────
     if run_scrape:
         msgs = []
+        # Install the browser now, not at page load. First scrape on a cold
+        # container pays for the download; nobody else does.
+        if ensure_browser is not None:
+            with st.spinner("Preparing browser (first scrape on a new server only)…"):
+                browser_ok, browser_err = ensure_browser()
+            if not browser_ok:
+                st.warning(
+                    f"Browser setup issue — the scrape will probably fail. "
+                    f"Error: `{browser_err or 'unknown'}`\n\n"
+                    "If this persists on Streamlit Cloud, check `packages.txt`."
+                )
         with st.spinner("Scraping Amazon India (2–3 min)…"):
             from engine.ecomm_index import run_scrape_and_store
             try:
