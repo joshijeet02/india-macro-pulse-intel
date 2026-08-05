@@ -35,6 +35,13 @@
 
 Pin current behaviour *before* touching it, so the refactor in Task 7 is provably behaviour-preserving. These tests encode what the code does today — including the composition-effect defect, which is documented here as a known-wrong behaviour and fixed in a later phase, not now.
 
+> **Revised during execution (commit `378cae9`).** Code review found the original 8 tests inadequate as a refactor safety net, and four were added — final count **12**:
+> - `test_group_summary_weights_items_within_a_group` — the original group test used two items with the *same* pct_change, so a weighted mean was indistinguishable from an unweighted one. The new test uses rice (wt 14.0) +10% and atta (wt 12.3) +20% → **14.68**, where a plain mean gives 15.0. Task 7 extracts exactly this arithmetic, so the gap mattered.
+> - `test_component_dict_has_expected_shape_and_values` — pins the full component dict, whose fields `ui/ecomm_view.py` consumes.
+> - `test_components_sorted_by_cpi_group_and_groups_by_change_desc` and `test_group_summary_of_empty_components_is_empty` — pin sort order and empty-input behaviour.
+>
+> The module docstring below says "Two of these encode known defects"; only one does. Corrected in the committed file to say "One".
+
 **Files:**
 - Test: `systems/02-macro-pulse/tests/test_ecomm_index.py`
 
@@ -142,7 +149,7 @@ def test_group_summary_rolls_up_by_cpi_group():
 cd systems/02-macro-pulse && PYTHONPATH=. python3.11 -m pytest tests/test_ecomm_index.py -v
 ```
 
-Expected: **8 passed**. These describe existing behaviour, so they must pass immediately. If any fails, the assumption about current behaviour is wrong — stop and investigate before continuing.
+Expected: **12 passed** (8 as originally written, plus the 4 added during review — see the revision note above). These describe existing behaviour, so they must pass immediately. If any fails, the assumption about current behaviour is wrong — stop and investigate before continuing.
 
 - [ ] **Step 3: Commit**
 
@@ -974,7 +981,7 @@ The `if denominator == 0:` guard is kept verbatim rather than swapped for `if no
 cd systems/02-macro-pulse && PYTHONPATH=. python3.11 -m pytest tests/test_ecomm_index.py -v
 ```
 
-Expected: **8 passed** — identical to Task 1. Any failure means the refactor changed behaviour and must be reverted, not accommodated.
+Expected: **12 passed** — identical to Task 1. Any failure means the refactor changed behaviour and must be reverted, not accommodated.
 
 - [ ] **Step 5: Run the full suite**
 
@@ -1001,7 +1008,7 @@ git commit -m "refactor(macro-pulse): compute_index delegates to index_formula"
 cd systems/02-macro-pulse && PYTHONPATH=. python3.11 -m pytest -q
 ```
 
-Expected: **≥ 106 passed** (78 pre-existing + 8 characterisation + 19 formula + 8 weights + 4 decomposer, minus any consolidated).
+Expected: **≥ 110 passed** (78 pre-existing + 12 characterisation + 19 formula + 8 weights + 4 decomposer, minus any consolidated).
 
 ```bash
 cd systems/01-rbi-comms && PYTHONPATH=. python3.11 -m pytest -q
