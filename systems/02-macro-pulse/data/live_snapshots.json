@@ -2,9 +2,26 @@
   "_comment": "Live price snapshots. The earliest snapshot per division is the reference the live index is measured against; it is never overwritten, because moving the reference would silently rewrite history.",
   "snapshots": [
     {
-      "fetched_at": "2026-08-05 17:22:32",
+      "fetched_at": "2026-08-05 17:35:40",
       "prices": {
-        "personal_care_and_misc": 11048.335
+        "personal_care_and_misc": {
+          "gold_per_gram": 12977.38,
+          "silver_per_gram": 190.26
+        },
+        "food_and_beverages": {
+          "rice": 73.8,
+          "moong_dal": 180.0,
+          "sunflower_oil": 168.0,
+          "mustard_oil": 205.0,
+          "paneer": 460.0,
+          "potato": 28.0,
+          "banana": 55.0,
+          "apple": 269.0,
+          "sugar": 55.0,
+          "turmeric": 330.0,
+          "coriander_powder": 310.0,
+          "tea": 600.0
+        }
       }
     }
   ]

@@ -58,6 +58,35 @@ ANCHOR_DIVISION_INDICES: dict[str, float] = {
 }
 ANCHOR_HEADLINE_INDEX = 107.00          # All India, same release
 
+# What fraction of each division our price signal actually represents.
+#
+# This matters more than it looks. Bullion is one sub-class inside
+# personal_care_and_misc; the rest of that division is soap, shampoo and
+# personal services, which do not move with gold. Applying a bullion move to
+# the whole 5.04% overstated its effect by roughly 3.5x.
+#
+# The jewellery share is DERIVED from published data, not guessed. In
+# January 2026 the division ran 19.02% while its jewellery group (13.2, "Other
+# personal effects") ran 59.23%. Solving div = s*jewel + (1-s)*rest for s gives
+# 0.278-0.297 across any sensible assumption about the rest — a stable answer,
+# so 0.288 (taking `rest` as the actual 2.75% headline) is used.
+#
+# Food and transport shares are estimates from basket composition and are
+# deliberately conservative: understating tracked share understates our own
+# measured movement, which is the safe direction to be wrong in.
+TRACKED_SHARE: dict[str, float] = {
+    # jewellery within personal care & misc — derived, see above
+    "personal_care_and_misc": 0.288,
+    # the 20-item grocery basket covers cereals, pulses, oils, milk, vegetables,
+    # fruit, sugar, spices, egg and tea. It does NOT cover meat and fish,
+    # prepared meals and snacks, or most beverages.
+    "food_and_beverages": 0.70,
+    # petrol and diesel within transport, which also holds vehicle purchase,
+    # maintenance, and rail/air/bus fares.
+    "transport": 0.40,
+}
+DEFAULT_TRACKED_SHARE = 1.0
+
 # Headline index twelve months before the month we are measuring, needed to
 # express the live level as a YoY rate. Source: MOSPI 13-month level table.
 BASE_YEAR_LEVELS: dict[str, float] = {
@@ -73,6 +102,7 @@ class DivisionReading:
     anchor_index: float
     relative: Optional[float]      # measured current/base price ratio, or None
     live_index: float
+    tracked_share: float = 1.0     # fraction of the division the signal covers
 
     @property
     def observed(self) -> bool:
@@ -88,7 +118,8 @@ class LiveIndex:
     index: float                       # measured headline index level
     anchor_index: float                # what MOSPI last published
     anchor_month: str
-    observed_weight: float             # % of basket actually repriced
+    observed_weight: float             # % of basket actually repriced,
+                                       # weighted by tracked share
     readings: list[DivisionReading] = field(default_factory=list)
 
     @property
@@ -127,13 +158,20 @@ def compute_live_index(
     for key, anchor_index in anchor_indices.items():
         weight = division_weights.get(key, 0.0)
         relative = price_relatives.get(key)
+        share = TRACKED_SHARE.get(key, DEFAULT_TRACKED_SHARE)
         if relative is not None and relative > 0:
-            live = anchor_index * relative
-            observed_weight += weight
+            # Only the tracked portion of the division moves. Applying the
+            # signal to the whole division would overstate it — for bullion,
+            # by about 3.5x.
+            effective = 1.0 + share * (relative - 1.0)
+            live = anchor_index * effective
+            observed_weight += weight * share
         else:
             relative = None
             live = anchor_index
-        readings.append(DivisionReading(key, weight, anchor_index, relative, round(live, 4)))
+        readings.append(
+            DivisionReading(key, weight, anchor_index, relative, round(live, 4), share)
+        )
 
     # young_aggregate expects relatives and multiplies by 100, so feed it
     # levels/100 to get a weighted level back. Same tested code path MOSPI's

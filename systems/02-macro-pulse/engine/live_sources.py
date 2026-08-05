@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -27,7 +28,14 @@ log = logging.getLogger(__name__)
 
 SNAPSHOT_PATH = Path(__file__).parent.parent / "data" / "live_snapshots.json"
 
-# A fetcher returns {division_key: representative_price} or {} on failure.
+# A fetcher returns {division_key: {item_id: price}} or {} on failure.
+#
+# Item-level rather than one number per division, so the relative can be
+# computed over items present in BOTH periods. Collapsing to a single average
+# at fetch time would let a changed item set move the relative for composition
+# reasons — a scrape that loses half the basket to throttling would read as a
+# price move. That is the same defect matched-sample chaining fixes in the
+# grocery index, and it must not be reintroduced here.
 Fetcher = Callable[[], dict]
 
 
@@ -45,15 +53,60 @@ def fetch_bullion_prices() -> dict:
     from scrapers.metals import fetch_bullion
 
     prices = {m["symbol"]: m["inr_per_gram"] for m in fetch_bullion()}
-    gold, silver = prices.get("XAU"), prices.get("XAG")
-    if gold is None:
+    if "XAU" not in prices:
         return {}
-    blended = 0.85 * gold + 0.15 * silver if silver is not None else gold
-    return {"personal_care_and_misc": round(blended, 4)}
+    items = {"gold_per_gram": prices["XAU"]}
+    if "XAG" in prices:
+        items["silver_per_gram"] = prices["XAG"]
+    return {"personal_care_and_misc": items}
+
+
+def fetch_grocery_prices() -> dict:
+    """
+    The 20-item grocery basket -> food_and_beverages, priced per item.
+
+    Per-item rather than pre-averaged so the relative can be taken over items
+    present in both periods. Amazon throttles, so item sets genuinely differ
+    between fetches; averaging first would turn that into a phantom price move.
+    """
+    from engine.ecomm_basket import BASKET_BY_ID
+    from scrapers.amazon import scrape_amazon
+    from engine.ecomm_basket import BASKET
+
+    observations = scrape_amazon(BASKET)
+    if not observations:
+        return {}
+
+    items: dict[str, float] = {}
+    for row in observations:
+        if row["item_id"] not in BASKET_BY_ID:
+            continue
+        price = row.get("price_per_kg") or row.get("price")
+        if price and price > 0:
+            items[row["item_id"]] = float(price)
+    return {"food_and_beverages": items} if items else {}
+
+
+def fetch_fuel_prices() -> dict:
+    """
+    Retail petrol and diesel -> transport.
+
+    Pump prices are revised daily by the oil marketing companies and are the
+    cleanest high-frequency series in the whole index. They are also the main
+    channel through which a crude shock reaches CPI.
+
+    Not yet wired to a live source: the OMC pages are JS-rendered and
+    data.gov.in's fuel resource needs an API key. Returning {} keeps transport
+    honestly marked as carried rather than silently assumed flat under a
+    fabricated price.
+    """
+    return {}
 
 
 FETCHERS: dict[str, Fetcher] = {
     "bullion": fetch_bullion_prices,
+    "grocery": fetch_grocery_prices,
+    "fuel": fetch_fuel_prices,
 }
 
 
@@ -96,34 +149,61 @@ def save_snapshot(prices: dict) -> dict:
 
 def reference_prices() -> dict:
     """
-    Earliest recorded price per division — the denominator of every relative.
+    Earliest recorded price per ITEM, grouped by division.
 
-    Taken per division rather than per snapshot, so a division added later
-    still gets its own first observation as its reference instead of being
-    excluded for having no price in the very first snapshot.
+    Per item, not per division or per snapshot: an item first seen in the third
+    fetch uses that fetch as its own reference, rather than being excluded for
+    having missed the first one. Never overwritten — moving a reference would
+    silently rewrite every reading that came before.
     """
-    reference: dict[str, float] = {}
+    reference: dict[str, dict[str, float]] = {}
     for snapshot in load_snapshots():          # oldest first
-        for key, price in snapshot["prices"].items():
-            if key not in reference and isinstance(price, (int, float)) and price > 0:
-                reference[key] = float(price)
+        for division, items in snapshot["prices"].items():
+            if not isinstance(items, dict):
+                continue
+            bucket = reference.setdefault(division, {})
+            for item_id, price in items.items():
+                if item_id not in bucket and isinstance(price, (int, float)) and price > 0:
+                    bucket[item_id] = float(price)
     return reference
 
 
 def compute_relatives(current: dict, reference: Optional[dict] = None) -> dict:
-    """current / reference per division, skipping anything unmeasurable."""
+    """
+    One price relative per division, over a MATCHED SAMPLE of items.
+
+    Only items priced in both the reference and this fetch contribute, and
+    they are combined as a geometric mean of their individual ratios — the
+    Jevons elementary form MOSPI uses.
+
+    The matched sample is the point. Amazon throttles, so item sets genuinely
+    differ between fetches. Averaging prices first and dividing the averages
+    would let a lost item move the relative, reporting a composition change as
+    a price change.
+    """
     reference = reference_prices() if reference is None else reference
-    out = {}
-    for key, price in current.items():
-        base = reference.get(key)
-        if base and isinstance(price, (int, float)) and price > 0:
-            out[key] = price / base
+    out: dict[str, float] = {}
+
+    for division, items in current.items():
+        if not isinstance(items, dict):
+            continue
+        base_items = reference.get(division) or {}
+        matched = [
+            items[item_id] / base_items[item_id]
+            for item_id in items.keys() & base_items.keys()
+            if items[item_id] > 0 and base_items[item_id] > 0
+        ]
+        if not matched:
+            continue
+        log_sum = sum(math.log(r) for r in matched)
+        out[division] = math.exp(log_sum / len(matched))
+
     return out
 
 
 def fetch_all() -> dict:
     """Run every fetcher. A failing source is skipped, never fatal."""
-    prices: dict[str, float] = {}
+    prices: dict[str, dict] = {}
     for name, fetcher in FETCHERS.items():
         try:
             prices.update(fetcher() or {})

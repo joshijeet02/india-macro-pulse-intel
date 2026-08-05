@@ -124,16 +124,23 @@ def render_live_index():
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     with st.expander("Prices fetched this run"):
-        st.dataframe(
-            pd.DataFrame(
-                [{"Division": _PRETTY.get(k, k), "Price": v}
-                 for k, v in result["current"].items()]
-            ),
-            use_container_width=True, hide_index=True,
-        )
         reference = reference_prices()
-        if reference:
-            st.caption(
-                "Measured against the earliest recorded price per division: "
-                + ", ".join(f"{_PRETTY.get(k, k)} {v}" for k, v in reference.items())
-            )
+        rows = []
+        for division, items in result["current"].items():
+            base_items = reference.get(division, {})
+            for item_id, price in sorted(items.items()):
+                base = base_items.get(item_id)
+                rows.append({
+                    "Division": _PRETTY.get(division, division),
+                    "Item": item_id,
+                    "Price now": round(price, 2),
+                    "Reference": round(base, 2) if base else "—",
+                    "Change": f"{(price / base - 1) * 100:+.2f}%" if base else "new",
+                })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.caption(
+            "Each division's relative is the geometric mean of the ratios above, "
+            "over items priced in BOTH periods. Items marked 'new' set their own "
+            "reference and do not affect this reading — a lost or added item must "
+            "never register as a price move."
+        )
