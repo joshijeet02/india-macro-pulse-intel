@@ -1,8 +1,17 @@
 {
-  "_comment": "Autonomous additions to the CPI/IIP series, written by scripts/refresh_releases.py. Merged on top of seed/historical_data.py at app boot. Newer reference_months override hardcoded entries. Hand-edits are fine but the schedule of runs will overwrite this file when MOSPI publishes a fresh release.",
+  "_comment": "Autonomous additions to the CPI/IIP series, written by scripts/refresh_releases.py. Merged on top of seed/historical_data.py at app boot. Newer reference_months override hardcoded entries. CORRECTED 2026-08-05: extract_reference_month matched a '(Final)' back-reference to the prior month, so every scraped CPI release was labelled one month early and April 2026 was skipped entirely. Values below were re-read from the MOSPI PDFs cited in each `source`.",
   "cpi": [
     {
       "reference_month": "2026-04",
+      "release_date": "2026-05-12",
+      "headline_yoy": 3.48,
+      "food_yoy": 4.2,
+      "fuel_yoy": null,
+      "consensus_forecast": null,
+      "source": "https://www.mospi.gov.in/uploads/PressRelease/CPI%20Press%20Release%20of%20April%202026.pdf"
+    },
+    {
+      "reference_month": "2026-05",
       "release_date": "2026-06-12",
       "headline_yoy": 3.93,
       "food_yoy": 4.78,
@@ -11,7 +20,7 @@
       "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1781259853555_04875571-19f2-4830-9cad-3a1bfd5992e1_Press_Release_of_CPI_for_May_2026.pdf"
     },
     {
-      "reference_month": "2026-05",
+      "reference_month": "2026-06",
       "release_date": "2026-07-13",
       "headline_yoy": 4.38,
       "food_yoy": 5.32,

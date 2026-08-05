@@ -117,3 +117,53 @@ def test_sanity_check_rejects_too_few_components():
     required = ("manufacturing_yoy", "mining_yoy", "electricity_yoy", "capital_goods_yoy")
     ok, reason = sanity_check_release(payload, required)
     assert not ok and "components parsed" in reason
+
+
+# ── Regression: the off-by-one that shipped to production ────────────────────
+# Verbatim text from MOSPI's June-2026 CPI release. Two traps live here:
+# the comma in "June, 2026", and a "(Final)" back-reference to the PRIOR
+# month. The old parser matched the back-reference and labelled every
+# autonomously-scraped release one month early.
+
+_JUNE_2026_RELEASE = """
+This Press Release is embargoed against publication till 4:00 PM of 13th July,2026.
+Year on year food inflation, based on Consumer Food Price Index, in June, 2026 is 5.32%
+Year-on-year inflation rate based on All India Consumer Price Index (CPI) with base
+year 2024 for the month of June, 2026 over June, 2025 is 4.38%(Provisional).
+Index for the month of May 2026 (Final) with base year 2024=100 is also released.
+"""
+
+
+def test_comma_between_month_and_year_is_tolerated():
+    """MOSPI writes "June, 2026"; a \\s+ pattern silently misses it."""
+    assert extract_reference_month(
+        "for the month of June, 2026 over June, 2025 is 4.38%"
+    ) == "2026-06"
+
+
+def test_prior_month_final_reference_does_not_win():
+    """
+    The June release also mentions "month of May 2026 (Final)". Matching that
+    produced a plausible-looking off-by-one: the headline value scraped
+    alongside it was correct, so only the label was wrong and nothing broke
+    loudly.
+    """
+    assert extract_reference_month(_JUNE_2026_RELEASE) == "2026-06"
+
+
+def test_embargo_date_is_never_used_as_the_reference_month():
+    """
+    The removed "first month-year pair anywhere" fallback matched the embargo
+    line ("13th July,2026") and returned a confidently wrong month. Absent an
+    anchored match we must return None and fail loudly instead.
+    """
+    assert extract_reference_month(
+        "This Press Release is embargoed till 4:00 PM of 13th July,2026."
+    ) is None
+
+
+def test_iip_title_phrasing_still_resolves():
+    """IIP titles say "Production for March, 2026" — no "month of"."""
+    assert extract_reference_month(
+        "Quick Estimates of Index of Industrial Production for March, 2026"
+    ) == "2026-03"

@@ -77,23 +77,54 @@ _MONTH_GROUP = (
 )
 _YEAR_GROUP = r"(?P<year>\d{4})"
 
-# Anchor patterns for the REFERENCE month. Tried in priority order.
-# Patterns have a single named (?P<month>...)/(?P<year>...) group each — the
-# "X over Y" phrasing repeats the month/year names, which Python re rejects,
-# so we keep that pattern simpler and rely on the surrounding patterns.
+# Month and year, tolerating the comma MOSPI actually writes:
+# "for the month of June, 2026". A \s+ between the two silently fails to
+# match the real sentence.
+_MONTH_YEAR = rf"{_MONTH_GROUP}[,\s]+{_YEAR_GROUP}"
+
+# Anchor patterns for the REFERENCE month, tried in priority order.
+#
+# Two traps, both of which produced a live off-by-one in production:
+#
+#   1. The comma. `month of June, 2026` does not match `{MONTH}\s+{YEAR}`.
+#
+#   2. The prior month appears in the SAME document. A June release also
+#      says "month of May 2026 (Final)", carrying the previous month's
+#      revised figures. Matching that yields a reference month one behind
+#      the truth — and it looks entirely plausible downstream, because the
+#      headline value scraped alongside it is correct. Only the label is
+#      wrong, so nothing crashes and nothing looks obviously broken.
+#
+# The top-priority patterns therefore anchor on the "... over <prior year>"
+# construction, which appears only in the reference-month sentence
+# ("for the month of June, 2026 over June, 2025 is 4.38%") and never in a
+# "(Final)" back-reference. Python's re rejects a repeated group name, so
+# the trailing month/year is matched non-capturing.
+#
+# The IIP pattern is anchored on "Industrial Production for <month>, <year>",
+# the phrasing of its release title. Deliberately specific rather than a bare
+# "for <month> <year>" — a loose variant is what the removed fallback
+# effectively was.
 _REF_MONTH_PATTERNS = [
-    rf"FOR\s+THE\s+MONTH\s+OF\s+{_MONTH_GROUP}\s+{_YEAR_GROUP}",
-    rf"for\s+the\s+month\s+of\s+{_MONTH_GROUP}\s+{_YEAR_GROUP}",
-    rf"month\s+of\s+{_MONTH_GROUP}\s+{_YEAR_GROUP}",
-    rf"in\s+{_MONTH_GROUP}\s+{_YEAR_GROUP}",
+    rf"for\s+the\s+month\s+of\s+{_MONTH_YEAR}\s+over\b",
+    rf"month\s+of\s+{_MONTH_YEAR}\s+over\b",
+    rf"Industrial\s+Production\s+for\s+{_MONTH_YEAR}",
+    rf"for\s+the\s+month\s+of\s+{_MONTH_YEAR}",
+    rf"month\s+of\s+{_MONTH_YEAR}",
+    rf"in\s+{_MONTH_YEAR}",
 ]
 
 
 def extract_reference_month(text: str) -> Optional[str]:
     """
-    Return 'YYYY-MM' for the reference period, anchored to MOSPI's typical
-    phrasing ("for the month of MARCH 2026"). Avoids picking up the release
-    date line ("April 28th, 2026") that comes earlier in the document.
+    Return 'YYYY-MM' for the reference period.
+
+    Returns None when no anchored pattern matches. There is deliberately NO
+    "first month-year pair anywhere" fallback: on a real MOSPI release that
+    fallback matched the embargo line ("till 4:00 PM of 13th July,2026") and
+    produced a confidently wrong month. A missing month fails loudly through
+    sanity_check_release and opens a GitHub issue, which is recoverable; a
+    silently mislabelled release is not.
     """
     for pattern in _REF_MONTH_PATTERNS:
         m = re.search(pattern, text, re.IGNORECASE)
@@ -101,10 +132,6 @@ def extract_reference_month(text: str) -> Optional[str]:
             month = m.group("month")
             year = m.group("year")
             return f"{int(year):04d}-{_MONTHS[month.title()]}"
-    # Last-resort fallback: first month-year pair anywhere.
-    m = re.search(rf"{_MONTH_GROUP}[,\s]+{_YEAR_GROUP}", text, re.IGNORECASE)
-    if m:
-        return f"{int(m.group('year')):04d}-{_MONTHS[m.group('month').title()]}"
     return None
 
 

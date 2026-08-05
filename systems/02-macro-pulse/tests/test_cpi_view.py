@@ -116,3 +116,32 @@ def test_base_year_of_degrades_on_any_malformed_month():
                 {"reference_month": "garbage"}, {"reference_month": "2026"},
                 {"reference_month": "2026-13"}, {"reference_month": 202605}):
         assert base_year_of(bad) == "2012"
+
+
+def test_provenance_labels_are_unambiguous():
+    """
+    The CPI figures are ingested from MOSPI, not estimated. If a viewer reads
+    them as our forecast they conclude we predict inflation exactly — a claim
+    nobody can defend. These labels must say so in plain words.
+    """
+    from ui._provenance import OFFICIAL_INGESTED, INDEPENDENT_ESTIMATE
+    assert "ingested, not estimated" in OFFICIAL_INGESTED
+    assert "not a forecast" in OFFICIAL_INGESTED
+    assert "not an official figure" in INDEPENDENT_ESTIMATE
+    assert "has not been measured" in INDEPENDENT_ESTIMATE
+    # The two must not be interchangeable.
+    assert OFFICIAL_INGESTED != INDEPENDENT_ESTIMATE
+
+
+def test_alpha_signal_does_not_reference_the_deleted_scrape_job(tmp_path, monkeypatch):
+    """The weekly Amazon workflow was deleted in 5c4139d (April 2026)."""
+    import db.schema, db.store
+    from engine.assessments import _cpi_alpha_signal
+
+    monkeypatch.setattr("db.schema.DB_PATH", tmp_path / "alpha.db")
+    monkeypatch.setattr("db.store.DB_PATH", tmp_path / "alpha.db")
+    db.schema.init_db()
+
+    text, _plain, _tone = _cpi_alpha_signal()   # empty DB -> the no-history branch
+    assert "wait for the weekly Amazon scrape job" not in text
+    assert "removed in April 2026" in text

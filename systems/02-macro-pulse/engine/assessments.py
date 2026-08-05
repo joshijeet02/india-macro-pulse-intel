@@ -660,8 +660,10 @@ def _cpi_alpha_signal() -> tuple[str, str, str]:
 
     if not idx_history or len(idx_history) < 2:
         return (
-            "Insufficient basket data — wait for the weekly Amazon scrape job to "
-            "accumulate observations, or click 'Run Price Scrape' for an instant local read.",
+            "No basket history yet, so no signal and no accuracy claim. The weekly "
+            "scrape job referenced here previously was removed in April 2026; the "
+            "only trigger today is 'Run Price Scrape' above, and observations "
+            "collected on Streamlit Cloud do not persist across restarts.",
             "We don't have enough price data yet for our proprietary signal. "
             "Real grocery prices will start showing up here as we collect them.",
             "info",

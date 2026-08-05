@@ -12,6 +12,7 @@ from engine.basket_weights import (
 )
 from engine.cross_ref import cpi_context_for_print
 from ui._mode import assessment_text, render_glossary_expander
+from ui._provenance import OFFICIAL_INGESTED
 
 _TONE_FN = {
     "success": st.success,
@@ -128,6 +129,8 @@ def render_cpi_section():
         "ex-food" if core_definition_of(latest_dec) == "ex-food"
         else "ex-food & fuel"
     )
+
+    st.info(OFFICIAL_INGESTED)
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Headline CPI", f"{latest['headline_yoy']}%", help="YoY %")

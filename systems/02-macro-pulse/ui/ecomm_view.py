@@ -30,6 +30,9 @@ def render_ecomm_section(pw_ready: bool = True, pw_err: str = ""):
         "Delhi (110001) · Laspeyres index (base = fixed)"
     )
 
+    from ui._provenance import INDEPENDENT_ESTIMATE
+    st.warning(INDEPENDENT_ESTIMATE)
+
     st.success(
         "**Methodology & Logic:** Official CPI is released with a 15–45 day lag. "
         "To anticipate it, we scrape current prices for 20 high-weight CPI grocery items "
