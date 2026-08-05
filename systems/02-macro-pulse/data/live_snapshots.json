@@ -60,6 +60,19 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-08-05 19:12:51",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13023.56,
+          "silver_per_gram": 190.82
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
