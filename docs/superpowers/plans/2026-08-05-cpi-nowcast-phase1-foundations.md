@@ -409,6 +409,12 @@ git commit -m "feat(macro-pulse): add Young aggregation to index_formula"
 
 Computes period-over-period movement using only items present in **both** periods, then chains onto the previous level. This is the mechanism that will eliminate the composition defect pinned in Task 1. It is built and tested now; wiring it into `compute_index` happens in a later phase alongside product identity.
 
+> **Revised during execution (commit `07f0794`).** The signature below returns a bare `float`. Code review correctly identified that as a PRD violation — §2 requires that the app "never present an index reading whose coverage or provenance is undisclosed," and a bare float makes "prices were flat" indistinguishable from "the matched sample collapsed and nothing was measured." A scraper outage would have rendered as price stability.
+>
+> `chain_link` now returns a frozen `ChainResult(level, matched, eligible)` with `coverage_pct` and `has_matched_sample` properties, and delegates its weighted mean to `young_aggregate` rather than duplicating the formula. Six tests were added covering the positivity-filter branch, which had zero coverage. Final count for this file: **25 tests**.
+>
+> Two review findings were **rejected**, with the reasons recorded as comments in the source so they are not re-litigated: filtering non-positive weights in `young_aggregate` (would risk Task 7's byte-identical contract for no real-world gain), and switching to `log(c) - log(b)` (identical precision at realistic ratios; upstream bounds prices to (0, 100000] so the overflow it guards against is unreachable).
+
 **Files:**
 - Modify: `systems/02-macro-pulse/engine/index_formula.py`
 - Test: `systems/02-macro-pulse/tests/test_index_formula.py`
@@ -527,7 +533,7 @@ def chain_link(
 cd systems/02-macro-pulse && PYTHONPATH=. python3.11 -m pytest tests/test_index_formula.py -v
 ```
 
-Expected: **19 passed**
+Expected: **25 passed** (19 as originally written, plus 6 added during review — see the revision note above)
 
 - [ ] **Step 5: Commit**
 
@@ -1008,7 +1014,7 @@ git commit -m "refactor(macro-pulse): compute_index delegates to index_formula"
 cd systems/02-macro-pulse && PYTHONPATH=. python3.11 -m pytest -q
 ```
 
-Expected: **≥ 110 passed** (78 pre-existing + 12 characterisation + 19 formula + 8 weights + 4 decomposer, minus any consolidated).
+Expected: **≥ 127 passed** (78 pre-existing + 12 characterisation + 25 formula + 8 weights + 4 decomposer, minus any consolidated).
 
 ```bash
 cd systems/01-rbi-comms && PYTHONPATH=. python3.11 -m pytest -q
