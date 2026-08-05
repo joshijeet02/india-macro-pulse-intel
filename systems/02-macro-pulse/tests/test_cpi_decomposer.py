@@ -41,3 +41,34 @@ def test_rbi_signal_property():
     """Returns dominant_driver: which of food/fuel/core contributed most (by absolute value)."""
     result = decompose_cpi(headline=5.49, food_yoy=9.24, fuel_yoy=5.26)
     assert result["dominant_driver"] == "food"
+
+
+def test_pre_2026_month_uses_2012_food_weight():
+    result = decompose_cpi(
+        headline=5.0, food_yoy=6.0, fuel_yoy=3.0, reference_month="2025-12"
+    )
+    # 6.0 * 0.4586 = 2.7516 -> 2.75
+    assert result["food_contrib"] == pytest.approx(2.75, abs=0.01)
+    assert result["base_year"] == "2012"
+
+
+def test_2026_month_uses_2024_food_weight():
+    result = decompose_cpi(
+        headline=5.0, food_yoy=6.0, fuel_yoy=3.0, reference_month="2026-01"
+    )
+    # 6.0 * 0.36753 = 2.20518 -> 2.21
+    assert result["food_contrib"] == pytest.approx(2.21, abs=0.01)
+    assert result["base_year"] == "2024"
+
+
+def test_food_contribution_is_lower_under_new_base():
+    old = decompose_cpi(5.0, 6.0, 3.0, reference_month="2025-12")
+    new = decompose_cpi(5.0, 6.0, 3.0, reference_month="2026-01")
+    assert new["food_contrib"] < old["food_contrib"]
+
+
+def test_omitting_reference_month_defaults_to_2012_base():
+    # Backwards compatibility: existing callers pass three positional args.
+    result = decompose_cpi(5.0, 6.0, 3.0)
+    assert result["base_year"] == "2012"
+    assert result["food_contrib"] == pytest.approx(2.75, abs=0.01)
