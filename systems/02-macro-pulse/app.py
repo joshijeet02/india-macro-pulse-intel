@@ -44,25 +44,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
-    html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    h1 { font-weight: 800 !important; color: #1C1E21 !important;
-         letter-spacing: -0.5px !important; margin-bottom: 0.5rem !important; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; background-color: transparent; }
-    .stTabs [data-baseweb="tab"] {
-        height: 44px; background-color: #F0F2F6; border-radius: 8px 8px 0px 0px;
-        padding: 10px 20px; color: #555; font-weight: 600; border: none;
-    }
-    .stTabs [aria-selected="true"] { background-color: #2E5BFF !important; color: white !important; }
-    div[data-testid="stMetricValue"] {
-        font-size: 1.8rem !important; font-weight: 700 !important; color: #2E5BFF !important;
-    }
-    .stDivider { margin-top: 2rem !important; margin-bottom: 2rem !important; }
-</style>
-""", unsafe_allow_html=True)
+from ui._theme import inject_theme, render_page_header
+
+inject_theme()
 
 init_db()
 if CPIStore().count() == 0:
@@ -105,7 +89,7 @@ if _ecomm.has_data():
 from ui._mode import render_mode_toggle
 from ui.live_view import render_live_index
 from ui.nowcast_view import render_nowcast_header
-from ui.calendar_view import render_release_calendar
+from ui.calendar_view import next_release_summary, render_release_calendar
 from ui.cpi_view import render_cpi_section
 from ui.iip_view import render_iip_section
 from ui.surprise_view import render_surprise_history
@@ -114,27 +98,41 @@ from ui.ecomm_view import render_ecomm_section
 
 render_mode_toggle()
 
-st.title("India Macro Pulse")
-st.caption("Live CPI estimate between official prints · Release intelligence for India's economic indicators")
+render_page_header(
+    "India Macro Pulse",
+    "Live CPI estimate between official prints · Release intelligence for India's economic indicators",
+    status=next_release_summary(),
+)
 
-# The page leads with a CALCULATION, not a forecast: fetch current prices,
-# move the divisions we can price, re-aggregate with official weights.
-render_live_index()
-st.divider()
-
-# Secondary, and clearly labelled as a different kind of thing: a statistical
-# estimate from the published series, useful as a cross-check on the measured
-# index rather than as the headline number.
-with st.expander("Statistical cross-check (model estimate, not a measurement)"):
-    render_nowcast_header()
-st.divider()
-
-render_release_calendar()
-st.divider()
-
-tab_cpi, tab_iip, tab_surprise, tab_brief, tab_ecomm = st.tabs([
-    "CPI Decomposition", "IIP Decomposition", "Surprise Tracker", "Flash Brief", "Proprietary Pulse"
+# Everything below lives in a tab. It used to be a single column: the live
+# estimate, then the model cross-check, then the release calendar, and only
+# then the tabs — so the tab strip was several screens down and most of the
+# app was reachable only by scrolling past content the visitor had already
+# read. Each tab now answers one question, and the strip is the first thing
+# under the title.
+#
+# Order is by what a visitor came for. The nowcast is the product and leads;
+# the official decompositions come next; the calendar and the accuracy record
+# sit behind them because they are checked occasionally, not on every visit.
+tab_now, tab_cpi, tab_iip, tab_pulse, tab_releases, tab_brief = st.tabs([
+    "Nowcast",
+    "CPI",
+    "IIP",
+    "Proprietary Pulse",
+    "Releases",
+    "Flash Brief",
 ])
+
+with tab_now:
+    # A CALCULATION, not a forecast: fetch current prices, move the divisions
+    # we can price, re-aggregate with official weights.
+    render_live_index()
+    st.divider()
+    # Clearly labelled as a different kind of thing — a statistical estimate
+    # from the published series, useful as a cross-check on the measured index
+    # rather than as a second headline.
+    with st.expander("Statistical cross-check (model estimate, not a measurement)"):
+        render_nowcast_header()
 
 with tab_cpi:
     render_cpi_section()
@@ -142,11 +140,13 @@ with tab_cpi:
 with tab_iip:
     render_iip_section()
 
-with tab_surprise:
+with tab_pulse:
+    render_ecomm_section(ensure_playwright_chromium)
+
+with tab_releases:
+    render_release_calendar()
+    st.divider()
     render_surprise_history()
 
 with tab_brief:
     render_brief_section()
-
-with tab_ecomm:
-    render_ecomm_section(ensure_playwright_chromium)

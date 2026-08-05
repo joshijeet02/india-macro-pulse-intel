@@ -164,9 +164,14 @@ def render_live_index():
         # started watching, so it reads near zero and sat next to a measured
         # -3% bullion move looking like a contradiction. What matters here is
         # how much of the month's basket is observation rather than assumption.
+        # Value is the bare figure, not "1.5% of basket" — a phrase set at
+        # headline size reads as a sentence someone forgot to shorten, and it
+        # crowded the two rates beside it. The qualifier belongs in the label.
         c.metric(
-            "Measured, not assumed",
-            f"{comp.measured_weight:.1f}% of basket",
+            # Short enough to survive a narrow column — Streamlit truncates
+            # metric labels with an ellipsis rather than wrapping them.
+            "Basket measured",
+            f"{comp.measured_weight:.1f}%",
             delta=(f"{estimate - live.yoy_for_mom(assumed, base_level):+.2f}pp"
                    if comp.measured_weight else None),
             help=(
@@ -209,43 +214,57 @@ def render_live_index():
                 f"we watch from beginning to end."
             )
 
+        # The two passages below are what make the number defensible, but stacked
+        # under the metrics they were four dense blocks the reader had to scroll
+        # through before reaching anything else. Each now leads with the sentence
+        # that carries the claim and keeps the full argument one click away.
         if last_print is not None:
             needed = live.mom_needed_for(last_print, base_level)
             direction = "below" if estimate < last_print else "above"
             st.info(
-                f"**{pretty_month(target)} is tracking {abs(estimate - last_print):.2f}pp "
-                f"{direction} {pretty_month(live.anchor_month)}'s {last_print}%.**\n\n"
-                f"A year-on-year rate divides today by a month twelve back. "
-                f"{pretty_month(base_month_for(target))} indexed **{base_level}**, so "
-                f"{pretty_month(target)} must move **{needed:+.2f}% month-on-month just "
-                f"to hold {last_print}%**. Flat prices print lower. That base is already "
-                f"published and cannot change — it is the most predictable part of the "
-                f"next release.\n\n"
-                f"On the other side, we put **{mom_value:+.2f}% month-on-month** on the "
-                f"month — {comp.measured_weight:.2f}% of the basket measured, the "
-                f"remaining {comp.assumed_weight:.1f}% assumed at {assumed:+.2f}% "
-                f"({mom_basis}). Flat prices would print {flat}%, but flat is not a "
-                f"neutral guess: over 14 months it was the worst of five estimators "
-                f"tested, and recent months ran +0.26%, +0.75% and +1.04%."
+                f"**{pretty_month(target)} is tracking "
+                f"{abs(estimate - last_print):.2f}pp {direction} "
+                f"{pretty_month(live.anchor_month)}'s {last_print}%** — because "
+                f"{pretty_month(base_month_for(target))} indexed {base_level}, and "
+                f"{pretty_month(target)} has to move {needed:+.2f}% month-on-month "
+                f"just to hold the rate steady."
             )
 
-        st.markdown(f"**If {pretty_month(target)} prices move by…**")
-        st.dataframe(
-            pd.DataFrame([{
-                "Month-on-month": f"{mom:+.2f}%",
-                f"{pretty_month(target)} would print": f"{live.yoy_for_mom(mom, base_level)}%",
-                "": ("← our estimate" if abs(mom - mom_value) < 0.05
-                     else "← flat prices" if mom == 0.0 else ""),
-            } for mom in sorted({-0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0,
-                                 round(mom_value, 2)})]),
-            use_container_width=True, hide_index=True,
-        )
+            with st.expander("Why the base month decides most of this"):
+                st.markdown(
+                    f"A year-on-year rate divides today by a month twelve back. "
+                    f"{pretty_month(base_month_for(target))} indexed **{base_level}**, "
+                    f"so {pretty_month(target)} must move **{needed:+.2f}% "
+                    f"month-on-month just to hold {last_print}%**. Flat prices print "
+                    f"lower. That base is already published and cannot change — it is "
+                    f"the most predictable part of the next release.\n\n"
+                    f"On the other side, we put **{mom_value:+.2f}% month-on-month** on "
+                    f"the month: {comp.measured_weight:.2f}% of the basket measured, the "
+                    f"remaining {comp.assumed_weight:.1f}% assumed at {assumed:+.2f}% "
+                    f"({mom_basis}). Flat prices would print {flat}%, but flat is not a "
+                    f"neutral guess — over 14 months it was the worst of five estimators "
+                    f"tested, and recent months ran +0.26%, +0.75% and +1.04%."
+                )
+
         release_month = _MONTHS[next_month_after(target).split("-")[1]]
-        st.caption(
-            f"{pretty_month(target)} data publishes around the 12th of {release_month}. "
-            f"Find the row matching your own view of this month's price move, and read "
-            f"off the print it implies."
-        )
+        with st.expander(
+            f"Sensitivity — what {pretty_month(target)} prints at other price moves"
+        ):
+            st.dataframe(
+                pd.DataFrame([{
+                    "Month-on-month": f"{mom:+.2f}%",
+                    f"{pretty_month(target)} would print": f"{live.yoy_for_mom(mom, base_level)}%",
+                    "": ("← our estimate" if abs(mom - mom_value) < 0.05
+                         else "← flat prices" if mom == 0.0 else ""),
+                } for mom in sorted({-0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0,
+                                     round(mom_value, 2)})]),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption(
+                f"{pretty_month(target)} data publishes around the 12th of "
+                f"{release_month}. Find the row matching your own view of this month's "
+                f"price move, and read off the print it implies."
+            )
 
     if result is None:
         st.caption(
