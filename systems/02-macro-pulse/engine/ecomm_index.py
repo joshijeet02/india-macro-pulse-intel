@@ -5,6 +5,7 @@ that directly parallels CPI food movement.
 """
 from datetime import datetime, timezone
 from engine.ecomm_basket import BASKET
+from engine.index_formula import young_aggregate
 
 
 def compute_index(
@@ -22,7 +23,8 @@ def compute_index(
     price_map = {p["item_id"]: p for p in current_prices}
     total_weight = sum(i["weight"] for i in BASKET)
 
-    numerator = 0.0
+    relatives: dict[str, float] = {}
+    item_weights: dict[str, float] = {}
     denominator = 0.0
     components = []
 
@@ -40,8 +42,9 @@ def compute_index(
 
         w = item["weight"]
         ratio = current / base
-        numerator   += w * ratio
-        denominator += w
+        relatives[iid]    = ratio      # unrounded — rounding happens at the end
+        item_weights[iid] = w
+        denominator      += w
 
         components.append({
             "item_id":       iid,
@@ -62,8 +65,8 @@ def compute_index(
             "components":    [],
         }
 
-    index = (numerator / denominator) * 100
-    coverage = (denominator / total_weight) * 100
+    index = young_aggregate(relatives, item_weights)
+    coverage = (denominator / total_weight) * 100.0
 
     return {
         "index_value":   round(index, 2),
