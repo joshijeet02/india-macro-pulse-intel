@@ -11,7 +11,9 @@ import pandas as pd
 import streamlit as st
 
 from engine.live_index import BASE_YEAR_LEVELS, compute_live_index
-from engine.live_sources import fetch_and_measure, load_snapshots, reference_prices
+from engine.live_sources import (
+    fetch_and_measure, load_snapshots, reference_prices, unmeasured_gap,
+)
 
 _PRETTY = {
     "food_and_beverages": "Food and beverages",
@@ -74,12 +76,22 @@ def render_live_index():
 
     live = compute_live_index(result["relatives"])
 
-    if result["first"]:
+    if result["first"] or not result["relatives"]:
         st.warning(
             "**First fetch — this is the reference, not a measurement.** Today's "
-            "prices become the baseline. The index equals MOSPI's published "
-            "figure because there is nothing yet to compare against. Fetch again "
-            "later and this becomes a real reading."
+            "prices become the baseline. There is no link to measure along yet, so "
+            "the index equals MOSPI's published figure. Fetch again later and this "
+            "becomes a real reading.\n\n"
+            "Note it reports *no* relative rather than a relative of 1.0: claiming "
+            "no change would assert something about prices over a period we never "
+            "observed."
+        )
+    else:
+        st.caption(
+            f"Measured along {len(snapshots) - 1} chained link(s) between "
+            f"{len(snapshots)} snapshots. Each link uses its own matched sample, so "
+            f"an item that stops scraping keeps the movement it contributed while it "
+            f"was visible instead of being erased from the record."
         )
 
     left, right = st.columns([2, 3])
@@ -109,7 +121,17 @@ def render_live_index():
             f"not that none occurred. As more sources come online, the carried "
             f"share shrinks and the reading tightens."
         )
-        st.caption(f"Anchor: MOSPI CPI release for {live.anchor_month}, Annexure I.")
+        gap = unmeasured_gap(live.anchor_month)
+        if gap:
+            st.caption(
+                f"Anchor: MOSPI CPI release for {live.anchor_month}, Annexure I. "
+                f"**{gap} between that month ending and our first price observation "
+                f"are unmeasured** — the index treats that stretch as flat because we "
+                f"were not yet watching. It shrinks each time a new release lets us "
+                f"re-anchor closer to the present."
+            )
+        else:
+            st.caption(f"Anchor: MOSPI CPI release for {live.anchor_month}, Annexure I.")
 
     rows = []
     for r in live.readings:

@@ -23,6 +23,32 @@
           "tea": 600.0
         }
       }
+    },
+    {
+      "fetched_at": "2026-08-05 17:56:03",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 12997.87,
+          "silver_per_gram": 190.62
+        },
+        "food_and_beverages": {
+          "rice": 73.8,
+          "atta": 76.4,
+          "toor_dal": 162.0,
+          "moong_dal": 172.0,
+          "chana_dal": 122.0,
+          "sunflower_oil": 168.0,
+          "mustard_oil": 205.0,
+          "paneer": 460.0,
+          "potato": 28.0,
+          "banana": 55.0,
+          "apple": 269.0,
+          "sugar": 55.0,
+          "turmeric": 330.0,
+          "coriander_powder": 310.0,
+          "tea": 600.0
+        }
+      }
     }
   ]
 }

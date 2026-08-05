@@ -112,7 +112,10 @@ def test_first_fetch_is_flagged_as_a_reference_not_a_measurement(store, monkeypa
     )
     _, relatives, first = live_sources.fetch_and_measure()
     assert first is True
-    assert relatives["food_and_beverages"] == pytest.approx(1.0)
+    # No link exists yet, so there is NO relative — not a synthetic 1.0.
+    # Reporting 1.0 would assert prices held steady over a period we never
+    # observed; reporting nothing says only that we have not measured yet.
+    assert relatives == {}
 
     monkeypatch.setattr(
         live_sources, "FETCHERS",
@@ -178,3 +181,113 @@ def test_bullion_needs_gold_at_minimum(monkeypatch):
 def test_fuel_returns_nothing_rather_than_a_fabricated_price():
     """No live source wired yet — transport stays honestly marked 'carried'."""
     assert live_sources.fetch_fuel_prices() == {}
+
+
+# ── chained links across time ───────────────────────────────────────────────
+
+def _snap(day, prices):
+    return {"fetched_at": f"2026-08-{day:02d} 00:00:00", "prices": prices}
+
+
+def test_chaining_captures_movement_a_direct_comparison_would_discard():
+    """
+    THE reason chaining is correct rather than merely tidier.
+
+    rice rises 20% then stops being scraped; atta then rises 10%. Comparing
+    newest against oldest keeps only atta — the one item spanning both ends —
+    and erases rice's move entirely. Chaining counts rice in the link it
+    actually spans.
+    """
+    snapshots = [
+        _snap(1, {"food_and_beverages": {"rice": 100.0, "atta": 100.0}}),
+        _snap(2, {"food_and_beverages": {"rice": 120.0, "atta": 100.0}}),
+        _snap(3, {"food_and_beverages": {"atta": 110.0}}),
+    ]
+    chained = live_sources.chained_relatives(snapshots)["food_and_beverages"]
+    reference = {"food_and_beverages": snapshots[0]["prices"]["food_and_beverages"]}
+    direct = live_sources.compute_relatives(
+        snapshots[-1]["prices"], reference
+    )["food_and_beverages"]
+
+    assert chained == pytest.approx(1.2050, abs=1e-4)
+    assert direct == pytest.approx(1.1000, abs=1e-4)
+    assert chained > direct
+
+
+def test_chained_links_compound():
+    snapshots = [
+        _snap(1, {"food_and_beverages": {"rice": 100.0}}),
+        _snap(2, {"food_and_beverages": {"rice": 110.0}}),
+        _snap(3, {"food_and_beverages": {"rice": 121.0}}),
+    ]
+    got = live_sources.chained_relatives(snapshots)["food_and_beverages"]
+    assert got == pytest.approx(1.21, abs=1e-6)
+
+
+def test_an_item_appearing_midway_contributes_to_later_links_only():
+    snapshots = [
+        _snap(1, {"food_and_beverages": {"rice": 100.0}}),
+        _snap(2, {"food_and_beverages": {"rice": 100.0, "tea": 500.0}}),
+        _snap(3, {"food_and_beverages": {"rice": 100.0, "tea": 600.0}}),
+    ]
+    got = live_sources.chained_relatives(snapshots)["food_and_beverages"]
+    # link 1: rice flat -> 1.0 ; link 2: rice flat, tea +20% -> sqrt(1.0*1.2)
+    assert got == pytest.approx(math.sqrt(1.2), abs=1e-6)
+
+
+def test_a_link_with_no_shared_item_is_skipped_not_treated_as_flat():
+    """
+    Asserting 'no change' across a step we could not observe would be a claim
+    about prices rather than about our coverage.
+    """
+    snapshots = [
+        _snap(1, {"food_and_beverages": {"rice": 100.0}}),
+        _snap(2, {"food_and_beverages": {"tea": 500.0}}),      # nothing shared
+        _snap(3, {"food_and_beverages": {"tea": 550.0}}),
+    ]
+    got = live_sources.chained_relatives(snapshots)["food_and_beverages"]
+    assert got == pytest.approx(1.10, abs=1e-6)   # only the tea link counted
+
+
+def test_a_single_snapshot_yields_no_chain():
+    assert live_sources.chained_relatives([_snap(1, {"x": {"a": 1.0}})]) == {}
+
+
+def test_no_snapshots_yields_no_chain():
+    assert live_sources.chained_relatives([]) == {}
+
+
+def test_link_relative_needs_a_shared_item():
+    assert live_sources.link_relative({"a": 1.0}, {"b": 2.0}) is None
+
+
+def test_link_relative_ignores_nonpositive_prices():
+    assert live_sources.link_relative({"a": 100.0, "b": 0.0},
+                                      {"a": 110.0, "b": 50.0}) == pytest.approx(1.10)
+
+
+# ── the unmeasured gap ──────────────────────────────────────────────────────
+
+def test_gap_between_the_anchor_month_and_our_first_price_is_reported():
+    """
+    The anchor describes June's average prices; our first snapshot is in
+    August. That movement was never observed and is silently treated as zero —
+    so it has to be stated, not implied away.
+    """
+    snapshots = [_snap(5, {"food_and_beverages": {"rice": 100.0}})]
+    gap = live_sources.unmeasured_gap("2026-06", snapshots)
+    assert gap == "35 days"      # 1 July -> 5 August
+
+
+def test_no_gap_reported_when_prices_predate_the_anchor_month_ending():
+    snapshots = [{"fetched_at": "2026-06-15 00:00:00", "prices": {"x": {"a": 1.0}}}]
+    assert live_sources.unmeasured_gap("2026-06", snapshots) is None
+
+
+def test_gap_is_none_without_snapshots():
+    assert live_sources.unmeasured_gap("2026-06", []) is None
+
+
+def test_gap_degrades_on_a_malformed_timestamp():
+    bad = [{"fetched_at": "not a date", "prices": {"x": {"a": 1.0}}}]
+    assert live_sources.unmeasured_gap("2026-06", bad) is None

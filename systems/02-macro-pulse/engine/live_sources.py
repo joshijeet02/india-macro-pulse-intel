@@ -201,6 +201,90 @@ def compute_relatives(current: dict, reference: Optional[dict] = None) -> dict:
     return out
 
 
+def link_relative(earlier: dict, later: dict) -> Optional[float]:
+    """
+    One chain link: the matched-sample geometric mean between two snapshots.
+
+    Returns None when the two share no priceable item, which is a real
+    outcome — it means that step measured nothing, not that prices held.
+    """
+    matched = [
+        later[item] / earlier[item]
+        for item in later.keys() & earlier.keys()
+        if later[item] > 0 and earlier[item] > 0
+    ]
+    if not matched:
+        return None
+    return math.exp(sum(math.log(r) for r in matched) / len(matched))
+
+
+def chained_relatives(snapshots: Optional[list] = None) -> dict:
+    """
+    Chain consecutive snapshots rather than comparing first to last.
+
+    Why chaining is the correct construction and not a refinement:
+
+    Comparing the newest snapshot directly against the oldest restricts the
+    measurement to items present in BOTH ends. An item introduced midway
+    contributes nothing, and an item that drops out late erases its own entire
+    history. Over months of throttled scrapes that silently shrinks the sample
+    to whatever survived from day one.
+
+    Chaining link by link, each step uses its own matched sample. An item
+    contributes to every link it spans and is dropped only from the links where
+    it is genuinely missing. That is the same reasoning behind matched-sample
+    chaining in the grocery index, applied across time instead of across a
+    single period.
+
+    A link that measures nothing (no shared item) is skipped rather than
+    treated as 1.0 — asserting "no change" across a gap we did not observe
+    would be a claim about prices rather than about our coverage.
+    """
+    snapshots = load_snapshots() if snapshots is None else snapshots
+    if len(snapshots) < 2:
+        return {}
+
+    by_division: dict[str, float] = {}
+    for earlier, later in zip(snapshots, snapshots[1:]):
+        earlier_prices = earlier.get("prices") or {}
+        later_prices = later.get("prices") or {}
+        for division, items in later_prices.items():
+            previous = earlier_prices.get(division)
+            if not isinstance(items, dict) or not isinstance(previous, dict):
+                continue
+            link = link_relative(previous, items)
+            if link is None:
+                continue
+            by_division[division] = by_division.get(division, 1.0) * link
+
+    return by_division
+
+
+def unmeasured_gap(anchor_month: str, snapshots: Optional[list] = None) -> Optional[str]:
+    """
+    Days between the anchor month ending and our first price observation.
+
+    The anchor index describes the average of prices across its reference
+    month. Our snapshots start whenever we first fetched. Everything in
+    between is movement we never saw, and the live reading silently treats it
+    as zero. Returning it lets the UI say so instead of implying the index is
+    current to the day.
+    """
+    snapshots = load_snapshots() if snapshots is None else snapshots
+    if not snapshots:
+        return None
+    try:
+        year, month = (int(x) for x in anchor_month.split("-"))
+        month_end = datetime(year + (month == 12), (month % 12) + 1, 1, tzinfo=timezone.utc)
+        first = datetime.strptime(
+            snapshots[0]["fetched_at"], "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=timezone.utc)
+    except (ValueError, KeyError, TypeError):
+        return None
+    days = (first - month_end).days
+    return f"{days} days" if days > 0 else None
+
+
 def fetch_all() -> dict:
     """Run every fetcher. A failing source is skipped, never fatal."""
     prices: dict[str, dict] = {}
@@ -227,5 +311,6 @@ def fetch_and_measure() -> tuple[dict, dict, bool]:
 
     save_snapshot(current)
     first = not reference_before
-    relatives = compute_relatives(current, reference_before or current)
+    # Chain across every stored snapshot, not just newest-vs-first.
+    relatives = chained_relatives()
     return current, relatives, first
