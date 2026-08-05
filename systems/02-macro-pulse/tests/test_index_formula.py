@@ -85,3 +85,55 @@ def test_young_zero_total_weight_raises():
 def test_young_empty_raises():
     with pytest.raises(ValueError, match="zero total weight"):
         young_aggregate({}, {})
+
+
+from engine.index_formula import chain_link
+
+
+def test_chain_link_uniform_rise():
+    prev_prices = {"rice": 100.0, "atta": 100.0}
+    curr_prices = {"rice": 110.0, "atta": 110.0}
+    weights = {"rice": 14.0, "atta": 12.3}
+    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(110.0)
+
+
+def test_chain_link_compounds_onto_previous_level():
+    prev_prices = {"rice": 110.0}
+    curr_prices = {"rice": 121.0}
+    weights = {"rice": 14.0}
+    # previous level 110, this period +10% -> 121
+    assert chain_link(110.0, curr_prices, prev_prices, weights) == pytest.approx(121.0)
+
+
+def test_chain_link_ignores_item_missing_this_period():
+    """
+    THE FIX for the composition defect: rice absent this period must not
+    move the level, because the matched sample excludes it entirely.
+    """
+    prev_prices = {"rice": 100.0, "atta": 100.0}
+    curr_prices = {"atta": 100.0}          # atta flat, rice absent
+    weights = {"rice": 14.0, "atta": 12.3}
+    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(100.0)
+
+
+def test_chain_link_ignores_item_new_this_period():
+    prev_prices = {"atta": 100.0}
+    curr_prices = {"atta": 100.0, "rice": 500.0}   # rice brand new
+    weights = {"rice": 14.0, "atta": 12.3}
+    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(100.0)
+
+
+def test_chain_link_no_overlap_returns_previous_level_unchanged():
+    # Nothing matched: we know nothing about price change, so hold the level.
+    assert chain_link(107.5, {"rice": 110.0}, {"atta": 100.0}, {"rice": 1.0}) == 107.5
+
+
+def test_chain_link_weighted_partial_movement():
+    # rice +10% (wt 14.0), atta flat (wt 12.3), both matched
+    # movement = (14.0*1.10 + 12.3*1.00)/26.3 = 1.053231939...
+    prev_prices = {"rice": 100.0, "atta": 100.0}
+    curr_prices = {"rice": 110.0, "atta": 100.0}
+    weights = {"rice": 14.0, "atta": 12.3}
+    assert chain_link(100.0, curr_prices, prev_prices, weights) == pytest.approx(
+        105.3231939, abs=1e-6
+    )

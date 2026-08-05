@@ -74,3 +74,41 @@ def young_aggregate(
 
     weighted = sum(weights[k] * relatives[k] for k in shared)
     return (weighted / total_weight) * 100.0
+
+
+def chain_link(
+    previous_level: float,
+    current_prices: Mapping[str, float],
+    previous_prices: Mapping[str, float],
+    weights: Mapping[str, float],
+) -> float:
+    """
+    Chain the index forward one period using a matched sample.
+
+    Only items priced in BOTH periods contribute. This is what prevents
+    coverage changes from masquerading as price changes: an item that
+    drops out is excluded from both the numerator and the denominator of
+    the movement, so it cannot shift the level.
+
+    If nothing matched, we have learned nothing about price change this
+    period and the previous level is returned unchanged.
+    """
+    matched = (
+        current_prices.keys()
+        & previous_prices.keys()
+        & weights.keys()
+    )
+    matched = {
+        k for k in matched
+        if current_prices[k] > 0 and previous_prices[k] > 0 and weights[k] > 0
+    }
+    if not matched:
+        return previous_level
+
+    total_weight = sum(weights[k] for k in matched)
+    movement = sum(
+        weights[k] * (current_prices[k] / previous_prices[k])
+        for k in matched
+    ) / total_weight
+
+    return previous_level * movement
