@@ -1,6 +1,10 @@
 # India Economic Intelligence — Python Dependencies
 # Core: Python 3.10+
-streamlit>=1.35.0
+# Pinned, not floored. ui/_theme.py styles Streamlit's internal DOM, which is
+# BaseWeb's and moves between releases — an unpinned floor let Streamlit Cloud
+# install a different version than the one the styling was verified against,
+# and the tab chrome rendered wrong in production while looking right locally.
+streamlit==1.56.0
 
 # HTTP & scraping
 requests>=2.31.0

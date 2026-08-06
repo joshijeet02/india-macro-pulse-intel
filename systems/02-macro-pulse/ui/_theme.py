@@ -111,32 +111,48 @@ h3 { font-size: 1.3rem !important; font-weight: 700 !important;
 }
 
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
+/* Targeted three ways on purpose. Streamlit's tab internals are BaseWeb's and
+   they move between versions: on the deployed build the fill landed but the
+   sizing did not, because `aria-selected` and `data-baseweb="tab"` sat on
+   different elements than they do locally. `[role="tab"]` and "the button
+   inside the tab list" are ARIA and structural contracts rather than
+   implementation details, so they survive the version drift. */
 .stTabs [data-baseweb="tab-list"] {
     gap: 6px;
     background: transparent;
     border-bottom: 1px solid rgba(128, 138, 160, 0.28);
     margin-bottom: 1.6rem;
 }
-.stTabs [data-baseweb="tab"] {
-    height: 48px;
+.stTabs [data-baseweb="tab"],
+.stTabs [role="tab"],
+.stTabs [data-baseweb="tab-list"] button {
+    height: 48px !important;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
     font-size: 1rem !important;
     font-weight: 600;
-    padding: 0 20px;
+    padding: 0 20px !important;
     border: none;
     border-radius: 10px 10px 0 0;
     background: transparent;
     opacity: 0.72;
 }
-.stTabs [data-baseweb="tab"]:hover {
+.stTabs [data-baseweb="tab"]:hover,
+.stTabs [role="tab"]:hover,
+.stTabs [data-baseweb="tab-list"] button:hover {
     background: rgba(128, 138, 160, 0.12);
     opacity: 1;
 }
-.stTabs [data-baseweb="tab"] p { font-size: 1rem !important; font-weight: 600 !important; }
-.stTabs [aria-selected="true"] {
+.stTabs [data-baseweb="tab"] p,
+.stTabs [role="tab"] p { font-size: 1rem !important; font-weight: 600 !important; }
+.stTabs [aria-selected="true"],
+.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
     background: ACCENT_COLOR !important;
     opacity: 1;
 }
-.stTabs [aria-selected="true"] p { color: #FFFFFF !important; }
+.stTabs [aria-selected="true"] p,
+.stTabs [aria-selected="true"] { color: #FFFFFF !important; }
 /* BaseWeb draws its own underline under the active tab; with a filled tab it
    reads as a stray rule. */
 .stTabs [data-baseweb="tab-highlight"],
