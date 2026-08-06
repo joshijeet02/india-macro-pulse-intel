@@ -89,7 +89,8 @@ if _ecomm.has_data():
 from ui._mode import render_mode_toggle
 from ui.live_view import render_live_index
 from ui.nowcast_view import render_nowcast_header
-from ui.calendar_view import next_release_summary, render_release_calendar
+from ui.calendar_view import render_release_calendar
+from ui.header_status import next_release_summary
 from ui.cpi_view import render_cpi_section
 from ui.iip_view import render_iip_section
 from ui.surprise_view import render_surprise_history

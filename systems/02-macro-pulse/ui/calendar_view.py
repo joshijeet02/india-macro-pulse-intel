@@ -7,26 +7,6 @@ from engine.release_calendar import (
 )
 
 
-def next_release_summary() -> str | None:
-    """
-    One line describing the next release, for the page header.
-
-    Returns None when nothing is scheduled, so the header can simply omit the
-    chip rather than print an empty box.
-    """
-    today = datetime.now(zoneinfo.ZoneInfo("Asia/Kolkata")).date()
-    upcoming = [
-        r for r in get_upcoming_releases(as_of=today, days_ahead=120)
-        if not has_been_released(r)
-    ]
-    if not upcoming:
-        return None
-    r = upcoming[0]
-    d = days_until(r, as_of=today)
-    when = "today" if d == 0 else ("tomorrow" if d == 1 else f"in {d} days")
-    return f"{r.indicator} {r.reference_period}<br>{r.expected_date:%b %d} · {when}"
-
-
 def render_release_calendar():
     st.subheader("Data Release Calendar")
 
