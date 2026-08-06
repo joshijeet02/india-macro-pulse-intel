@@ -204,11 +204,7 @@ def render_live_index():
                     f"**{bullion['mom_pct']:+.2f}%**, observed from daily prices. That "
                     f"covers {comp.measured_weight:.2f}% of the basket and pulls the "
                     f"estimate from {live.yoy_for_mom(assumed, base_level)}% to "
-                    f"**{estimate}%**.\n\n"
-                    f"The grocery basket contributes **nothing to this print** and will "
-                    f"not: Amazon publishes no price history, and {pretty_month(target)} "
-                    f"ended before we began observing. It starts contributing to the "
-                    f"first month we watch from beginning to end."
+                    f"**{estimate}%**."
                 )
 
             # Leads with the sentence carrying the claim; the full argument
