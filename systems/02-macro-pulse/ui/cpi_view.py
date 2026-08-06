@@ -176,22 +176,34 @@ def render_cpi_section():
                 if a:
                     _TONE_FN.get(a["tone"], st.info)(assessment_text(a))
 
-    # ── Contribution bar chart ──────────────────────────────────────────────
+    # ── Charts, side by side ────────────────────────────────────────────────
+    # Stacked full-width, the contribution chart is two bars stretched across a
+    # desktop window — the bars carry no more information for being 700px wide,
+    # and it pushes the trend line below the fold. Paired, each gets a sensible
+    # aspect ratio and both are visible at once, which is also how you actually
+    # read them: the split now, and how it got there.
     _contrib_rows = contribution_rows(latest_dec)
-    if len(_contrib_rows) >= 2:
-        st.subheader("Contributions to Headline CPI (pp)")
-        contrib_data = pd.DataFrame({
-            "Component": [name for name, _ in _contrib_rows],
-            "Contribution (pp)": [value for _, value in _contrib_rows],
-        })
-        st.bar_chart(contrib_data.set_index("Component"))
-
-    st.subheader("12-Month Trend")
     df = pd.DataFrame(history).set_index("reference_month")
     chart_cols = {c: c.replace("_yoy", "").replace("_", " ").title()
                   for c in ["headline_yoy", "core_yoy", "food_yoy"] if c in df.columns}
-    if chart_cols:
-        st.line_chart(df[list(chart_cols.keys())].rename(columns=chart_cols))
+
+    left_chart, right_chart = st.columns(2, gap="large")
+
+    with left_chart:
+        if len(_contrib_rows) >= 2:
+            st.subheader("Contributions to Headline CPI (pp)")
+            contrib_data = pd.DataFrame({
+                "Component": [name for name, _ in _contrib_rows],
+                "Contribution (pp)": [value for _, value in _contrib_rows],
+            })
+            st.bar_chart(contrib_data.set_index("Component"), height=340)
+
+    with right_chart:
+        st.subheader("12-Month Trend")
+        if chart_cols:
+            st.line_chart(
+                df[list(chart_cols.keys())].rename(columns=chart_cols), height=340
+            )
 
     # Download the full series as CSV — analyst ergonomics
     full_df = pd.DataFrame(history)

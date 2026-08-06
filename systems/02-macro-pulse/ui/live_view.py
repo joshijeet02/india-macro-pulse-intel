@@ -147,7 +147,12 @@ def render_live_index():
             "value": estimate, "month": target, "basis": mom_basis,
         }
 
-        a, b, c = st.columns(3)
+        # Trailing spacer column. Three equal columns across a full-width
+        # desktop window pushed the third metric far off to the right with a
+        # dead gap in the middle; the eye stops reading them as one row. The
+        # spacer keeps them grouped at roughly the width of the narrative
+        # column below, so the page reads as one layout rather than two.
+        a, b, c, _ = st.columns([1, 1, 1, 1.4])
         a.metric(
             f"{pretty_month(target)} CPI — estimate",
             f"{estimate}%",
@@ -181,79 +186,89 @@ def render_live_index():
             ),
         )
 
-        street = CONSENSUS.get(target)
-        if street:
-            midpoint = (street["low"] + street["high"]) / 2
-            gap_to_street = estimate - midpoint
-            agreement = (
-                "in line with" if abs(gap_to_street) <= 0.15
-                else ("above" if gap_to_street > 0 else "below")
-            )
-            st.success(
-                f"**Street consensus for {pretty_month(target)}: "
-                f"{street['low']}–{street['high']}%.** Our estimate of {estimate}% is "
-                f"{agreement} it"
-                + (f", by {abs(gap_to_street):.2f}pp" if agreement != "in line with" else "")
-                + f".\n\nWe get there from our own month-on-month data — "
-                f"{mom_basis} — not by anchoring to the poll. "
-                f"{street['note']} _Source: {street['source']}._"
-            )
+        # Two columns on a desktop, stacked automatically on a narrow screen.
+        # This is what lets the page fill a Mac window without any sentence
+        # running the full width of it: the argument stays in a readable
+        # measure on the left while the reference material — where we sit
+        # against the street, and the sensitivity ladder — occupies the width
+        # that was previously empty margin.
+        narrative, reference = st.columns([1.35, 1], gap="large")
 
-        if measured_moms and bullion:
-            st.markdown(
-                f"**Measured, not assumed:** gold and silver averaged "
-                f"₹{bullion['from_inr_per_gram']:,.0f}/g across "
-                f"{pretty_month(live.anchor_month)} and "
-                f"₹{bullion['to_inr_per_gram']:,.0f}/g across {pretty_month(target)} — "
-                f"**{bullion['mom_pct']:+.2f}%**, observed from daily prices. That covers "
-                f"{comp.measured_weight:.2f}% of the basket and pulls the estimate from "
-                f"{live.yoy_for_mom(assumed, base_level)}% to **{estimate}%**.\n\n"
-                f"The grocery basket contributes **nothing to this print** and will not: "
-                f"Amazon publishes no price history, and {pretty_month(target)} ended "
-                f"before we began observing. It starts contributing to the first month "
-                f"we watch from beginning to end."
-            )
-
-        # The two passages below are what make the number defensible, but stacked
-        # under the metrics they were four dense blocks the reader had to scroll
-        # through before reaching anything else. Each now leads with the sentence
-        # that carries the claim and keeps the full argument one click away.
-        if last_print is not None:
-            needed = live.mom_needed_for(last_print, base_level)
-            direction = "below" if estimate < last_print else "above"
-            st.info(
-                f"**{pretty_month(target)} is tracking "
-                f"{abs(estimate - last_print):.2f}pp {direction} "
-                f"{pretty_month(live.anchor_month)}'s {last_print}%** — because "
-                f"{pretty_month(base_month_for(target))} indexed {base_level}, and "
-                f"{pretty_month(target)} has to move {needed:+.2f}% month-on-month "
-                f"just to hold the rate steady."
-            )
-
-            with st.expander("Why the base month decides most of this"):
+        with narrative:
+            if measured_moms and bullion:
                 st.markdown(
-                    f"A year-on-year rate divides today by a month twelve back. "
-                    f"{pretty_month(base_month_for(target))} indexed **{base_level}**, "
-                    f"so {pretty_month(target)} must move **{needed:+.2f}% "
-                    f"month-on-month just to hold {last_print}%**. Flat prices print "
-                    f"lower. That base is already published and cannot change — it is "
-                    f"the most predictable part of the next release.\n\n"
-                    f"On the other side, we put **{mom_value:+.2f}% month-on-month** on "
-                    f"the month: {comp.measured_weight:.2f}% of the basket measured, the "
-                    f"remaining {comp.assumed_weight:.1f}% assumed at {assumed:+.2f}% "
-                    f"({mom_basis}). Flat prices would print {flat}%, but flat is not a "
-                    f"neutral guess — over 14 months it was the worst of five estimators "
-                    f"tested, and recent months ran +0.26%, +0.75% and +1.04%."
+                    f"**Measured, not assumed:** gold and silver averaged "
+                    f"₹{bullion['from_inr_per_gram']:,.0f}/g across "
+                    f"{pretty_month(live.anchor_month)} and "
+                    f"₹{bullion['to_inr_per_gram']:,.0f}/g across {pretty_month(target)} — "
+                    f"**{bullion['mom_pct']:+.2f}%**, observed from daily prices. That "
+                    f"covers {comp.measured_weight:.2f}% of the basket and pulls the "
+                    f"estimate from {live.yoy_for_mom(assumed, base_level)}% to "
+                    f"**{estimate}%**.\n\n"
+                    f"The grocery basket contributes **nothing to this print** and will "
+                    f"not: Amazon publishes no price history, and {pretty_month(target)} "
+                    f"ended before we began observing. It starts contributing to the "
+                    f"first month we watch from beginning to end."
                 )
 
-        release_month = _MONTHS[next_month_after(target).split("-")[1]]
-        with st.expander(
-            f"Sensitivity — what {pretty_month(target)} prints at other price moves"
-        ):
+            # Leads with the sentence carrying the claim; the full argument
+            # stays one click away rather than as another dense block.
+            if last_print is not None:
+                needed = live.mom_needed_for(last_print, base_level)
+                direction = "below" if estimate < last_print else "above"
+                st.info(
+                    f"**{pretty_month(target)} is tracking "
+                    f"{abs(estimate - last_print):.2f}pp {direction} "
+                    f"{pretty_month(live.anchor_month)}'s {last_print}%** — because "
+                    f"{pretty_month(base_month_for(target))} indexed {base_level}, and "
+                    f"{pretty_month(target)} has to move {needed:+.2f}% month-on-month "
+                    f"just to hold the rate steady."
+                )
+
+                with st.expander("Why the base month decides most of this"):
+                    st.markdown(
+                        f"A year-on-year rate divides today by a month twelve back. "
+                        f"{pretty_month(base_month_for(target))} indexed "
+                        f"**{base_level}**, so {pretty_month(target)} must move "
+                        f"**{needed:+.2f}% month-on-month just to hold {last_print}%**. "
+                        f"Flat prices print lower. That base is already published and "
+                        f"cannot change — it is the most predictable part of the next "
+                        f"release.\n\n"
+                        f"On the other side, we put **{mom_value:+.2f}% month-on-month** "
+                        f"on the month: {comp.measured_weight:.2f}% of the basket "
+                        f"measured, the remaining {comp.assumed_weight:.1f}% assumed at "
+                        f"{assumed:+.2f}% ({mom_basis}). Flat prices would print "
+                        f"{flat}%, but flat is not a neutral guess — over 14 months it "
+                        f"was the worst of five estimators tested, and recent months ran "
+                        f"+0.26%, +0.75% and +1.04%."
+                    )
+
+        with reference:
+            street = CONSENSUS.get(target)
+            if street:
+                midpoint = (street["low"] + street["high"]) / 2
+                gap_to_street = estimate - midpoint
+                agreement = (
+                    "in line with" if abs(gap_to_street) <= 0.15
+                    else ("above" if gap_to_street > 0 else "below")
+                )
+                st.success(
+                    f"**Street consensus for {pretty_month(target)}: "
+                    f"{street['low']}–{street['high']}%.** Our estimate of {estimate}% "
+                    f"is {agreement} it"
+                    + (f", by {abs(gap_to_street):.2f}pp"
+                       if agreement != "in line with" else "")
+                    + f".\n\nWe get there from our own month-on-month data — "
+                    f"{mom_basis} — not by anchoring to the poll. "
+                    f"{street['note']} _Source: {street['source']}._"
+                )
+
+            release_month = _MONTHS[next_month_after(target).split("-")[1]]
+            st.markdown(f"**If {pretty_month(target)} prices move by…**")
             st.dataframe(
                 pd.DataFrame([{
                     "Month-on-month": f"{mom:+.2f}%",
-                    f"{pretty_month(target)} would print": f"{live.yoy_for_mom(mom, base_level)}%",
+                    "Would print": f"{live.yoy_for_mom(mom, base_level)}%",
                     "": ("← our estimate" if abs(mom - mom_value) < 0.05
                          else "← flat prices" if mom == 0.0 else ""),
                 } for mom in sorted({-0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0,

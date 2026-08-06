@@ -41,13 +41,28 @@ html, body, [class*="css"], button, input, select, textarea {
 }
 
 /* ── Reading column ─────────────────────────────────────────────────────── */
-/* Top padding must clear Streamlit's floating 60px header bar, which overlays
+/* Use the whole window. A 1240px cap kept line-length comfortable but left a
+   third of a desktop screen empty on either side, which reads as a phone
+   layout stretched onto a Mac — and this is a dashboard, where width is the
+   point.
+
+   Readability is protected by LAYOUT instead: the long passages sit in
+   columns (see live_view), so no paragraph runs the full width of the window
+   even when the window is very wide. Capping the page was the wrong tool for
+   that job.
+
+   Top padding must clear Streamlit's floating 60px header bar, which overlays
    the container rather than pushing it down. Too little and the h1 is sliced
    in half. */
 .stMainBlockContainer {
-    max-width: 1240px;
+    max-width: 100%;
     padding-top: 4rem;
     padding-bottom: 5rem;
+    padding-left: 3.5rem;
+    padding-right: 3.5rem;
+}
+@media (max-width: 640px) {
+    .stMainBlockContainer { padding-left: 1.1rem; padding-right: 1.1rem; }
 }
 
 /* ── Type scale ─────────────────────────────────────────────────────────── */
