@@ -222,6 +222,36 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-08-11 03:07:21",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13524.04,
+          "silver_per_gram": 202.14
+        },
+        "food_and_beverages": {
+          "atta::nature_s_superfoods_aashirvaad_organic_atta": 76.4,
+          "toor_dal::bharat_organics_unpolished_arhar_dal_1kg": 179.0,
+          "moong_dal::amazon_brand_vedaka_unpolished_green_moong": 182.0,
+          "chana_dal::tata_sampann_chana_dal_1kg": 126.0,
+          "sunflower_oil::jivo_first_pressed_sunflower_oil_1": 199.0,
+          "mustard_oil::patanjali_pure_mustard_oil_natural_kachi": 208.0,
+          "paneer::milky_mist_paneer_200_g": 510.0,
+          "eggs::upf_healthy_brown_eggs_12_pieces": 159.0,
+          "potato::carisma_fresh_potato_1kg_lower_gi": 50.0,
+          "banana::fresh_baby_banana_robusta_1_kg": 43.0,
+          "apple::fresh_apple_royal_gala_regular_4": 226.0,
+          "sugar::parry_s_pure_refined_sugar_1000": 71.0,
+          "turmeric::kalprishi_haldi_powder_200g_pack_of": 365.0,
+          "coriander_powder::aashirvaad_coriander_powder_200g_pack_perfectly": 385.0,
+          "tea::society_tea_society_leaf_tea_250g": 612.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
