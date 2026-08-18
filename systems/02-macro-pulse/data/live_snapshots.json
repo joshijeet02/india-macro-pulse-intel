@@ -394,6 +394,26 @@
           "tea::tata_tea_gold_care_rich_in": 632.0
         }
       }
+    },
+    {
+      "fetched_at": "2026-08-18 02:19:51",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13534.53,
+          "silver_per_gram": 201.6
+        },
+        "food_and_beverages": {
+          "apple::fresh_apple_green_regular_2pc_approx": 144.0,
+          "sugar::parry_s_pure_refined_sugar_1000": 63.0,
+          "turmeric::aashirvaad_turmeric_powder_200g_natural_golden": 370.0,
+          "coriander_powder::tata_sampann_coriander_powder_with_natural": 330.0,
+          "tea::tata_tea_gold_care_rich_in": 632.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
