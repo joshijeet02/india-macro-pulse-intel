@@ -414,6 +414,26 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-08-19 02:25:57",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13417.56,
+          "silver_per_gram": 194.89
+        },
+        "food_and_beverages": {
+          "potato::britannia_5050_potazos_masti_masala_spicy": 29.0,
+          "sugar::parry_s_pure_refined_sugar_1000": 63.0,
+          "turmeric::kalprishi_haldi_powder_200g_pack_of": 365.0,
+          "coriander_powder::aashirvaad_coriander_powder_200g_pack_perfectly": 385.0,
+          "tea::tata_tea_gold_care_rich_in": 632.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
