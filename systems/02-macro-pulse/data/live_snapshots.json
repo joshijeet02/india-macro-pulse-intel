@@ -434,6 +434,30 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-08-20 02:19:49",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13844.55,
+          "silver_per_gram": 207.45
+        },
+        "food_and_beverages": {
+          "paneer::id_fresh_high_protein_paneer_56g": 700.0,
+          "eggs::eggoz_farm_fresh_high_protein_white": 142.0,
+          "potato::britannia_5050_potazos_masti_masala_spicy": 28.0,
+          "banana::banana_flower_fresh_produce_pack_of": 259.0,
+          "apple::apple_fresh_red_delicious_regular_3pc": 265.0,
+          "sugar::organic_tattva_all_natural_sugar_1kg": 123.0,
+          "turmeric::kalprishi_haldi_powder_200g_pack_of": 365.0,
+          "coriander_powder::tata_sampann_coriander_powder_with_natural": 395.0,
+          "tea::tata_tea_gold_care_rich_in": 632.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
