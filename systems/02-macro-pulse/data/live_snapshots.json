@@ -659,6 +659,28 @@
           "diesel_per_litre": 95.56
         }
       }
+    },
+    {
+      "fetched_at": "2026-08-31 06:46:02",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13619.92,
+          "silver_per_gram": 204.98
+        },
+        "food_and_beverages": {
+          "sunflower_oil::jivo_first_pressed_sunflower_oil_1": 209.0,
+          "mustard_oil::musta_pure_cold_pressed_kachi_ghani": 221.0,
+          "paneer::soya_bright_soya_paneer_tofu_200g": 845.0,
+          "sugar::organic_tattva_all_natural_sugar_1kg": 124.0,
+          "turmeric::everest_turmeric_powder_200gm_pure_fine": 380.0,
+          "coriander_powder::mayur_gold_coriander_powder_with_natural": 350.0,
+          "tea::avt_premium_black_leaf_tea_250": 560.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
