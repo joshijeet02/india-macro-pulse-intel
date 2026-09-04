@@ -735,6 +735,26 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-09-04 05:37:38",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13590.46,
+          "silver_per_gram": 203.37
+        },
+        "food_and_beverages": {
+          "paneer::krishna_s_paneer_phool_200_g": 935.0,
+          "sugar::trust_classic_sulphur_less_sugar_1kg": 239.0,
+          "turmeric::cookme_turmeric_haldi_powder_200g_2": 400.0,
+          "coriander_powder::jrc_crushed_dhaniya_coriander_powder_200": 510.0,
+          "tea::society_tea_society_leaf_tea_250g": 620.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
