@@ -4,10 +4,10 @@
     "2026-06->2026-07": {
       "from_month": "2026-06",
       "to_month": "2026-07",
-      "from_inr_per_gram": 11019.81,
-      "to_inr_per_gram": 10687.07,
-      "mom_pct": -3.019,
-      "measured_at": "2026-09-15 05:57:38"
+      "from_inr_per_gram": 11080.78,
+      "to_inr_per_gram": 10711.74,
+      "mom_pct": -3.331,
+      "measured_at": "2026-09-16 05:43:42"
     }
   }
 }
