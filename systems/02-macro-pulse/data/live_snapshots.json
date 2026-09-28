@@ -1255,6 +1255,31 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-09-28 06:24:04",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 12868.64,
+          "silver_per_gram": 190.19
+        },
+        "food_and_beverages": {
+          "toor_dal::tata_sampann_unpolished_toor_dal_arhar": 199.0,
+          "moong_dal::tata_sampann_organic_unpolished_moong_dal": 278.0,
+          "chana_dal::natureland_organics_chana_dal_1_kg": 165.0,
+          "sunflower_oil::jivo_cold_pressed_sunflower_oil_1": 214.0,
+          "mustard_oil::fortune_premio_cold_pressed_mustard_oil": 205.0,
+          "paneer::healthy_vibes_matter_soya_tofu_paneer": 900.0,
+          "sugar::fortune_sugar_1_kg": 79.0,
+          "turmeric::everest_turmeric_powder_200gm_pure_fine": 400.0,
+          "coriander_powder::sakthi_spice_powder_coriander_200g_pack": 425.0,
+          "tea::wagh_bakri_premium_tea_black_assam": 600.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
