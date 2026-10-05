@@ -1444,6 +1444,23 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-10-05 06:37:47",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 12854.96,
+          "silver_per_gram": 190.4
+        },
+        "food_and_beverages": {
+          "sugar::organic_tattva_all_natural_sugar_1kg": 140.0,
+          "turmeric::tata_sampann_turmeric_powder_with_natural": 445.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
