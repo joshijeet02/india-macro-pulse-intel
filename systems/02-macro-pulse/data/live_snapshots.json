@@ -1604,6 +1604,22 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-10-12 07:03:19",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 13019.46,
+          "silver_per_gram": 189.7
+        },
+        "food_and_beverages": {
+          "sunflower_oil::jivo_cold_pressed_sunflower_oil_1": 189.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
