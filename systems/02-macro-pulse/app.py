@@ -35,7 +35,6 @@ def ensure_playwright_chromium() -> tuple[bool, str]:
     return result.returncode == 0, result.stderr.strip()
 
 from db.schema import init_db
-from db.store import CPIStore
 
 st.set_page_config(
     page_title="India Macro Pulse",
@@ -49,9 +48,23 @@ from ui._theme import inject_theme, render_page_header
 inject_theme()
 
 init_db()
-if CPIStore().count() == 0:
-    from seed.historical_data import seed
-    seed()
+
+# Re-seed and re-anchor whenever the committed data files change, not only on
+# an empty store. The old `if count() == 0` check is why the deployed app sat
+# on June 2026 for three months: the container's DB was seeded once and never
+# again, though every release had been committed. See engine/data_sync.py.
+from engine.data_sync import (
+    DIVISION_INDICES, RELEASE_UPDATES, file_signature, refresh_anchor, sync_store,
+)
+
+
+@st.cache_resource(show_spinner=False)
+def _sync_data(signature: str) -> str:
+    sync_store()
+    return refresh_anchor()
+
+
+_sync_data(file_signature(RELEASE_UPDATES, DIVISION_INDICES))
 
 # Hydrate Amazon basket from committed JSON if the ephemeral DB is empty.
 # This makes the basket index survive Streamlit Cloud container restarts.
@@ -91,6 +104,7 @@ from ui.live_view import render_live_index
 from ui.nowcast_view import render_nowcast_header
 from ui.calendar_view import render_release_calendar
 from ui.header_status import next_release_summary
+from ui.freshness import render_freshness
 from ui.cpi_view import render_cpi_section
 from ui.iip_view import render_iip_section
 from ui.surprise_view import render_surprise_history
@@ -104,6 +118,7 @@ render_page_header(
     "Live CPI estimate between official prints · Release intelligence for India's economic indicators",
     status=next_release_summary(),
 )
+render_freshness()
 
 # Everything below lives in a tab. It used to be a single column: the live
 # estimate, then the model cross-check, then the release calendar, and only

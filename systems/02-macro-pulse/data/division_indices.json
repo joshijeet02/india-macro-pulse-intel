@@ -99,6 +99,105 @@
       "headline_index": 107.0,
       "headline_yoy": 4.38,
       "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1783937698596_1013f1a1-3400-41aa-b4f4-5bbff10db7b7_Press_Release_of_CPI_for_June_2026.pdf"
+    },
+    "2026-07": {
+      "divisions": {
+        "food_and_beverages": 109.1,
+        "paan_tobacco_and_intoxicants": 108.18,
+        "clothing_and_footwear": 108.45,
+        "housing_water_electricity_gas_fuel": 103.85,
+        "furnishings_household_equipment": 105.21,
+        "health": 104.75,
+        "transport": 105.63,
+        "information_and_communication": 104.26,
+        "recreation_sport_and_culture": 104.49,
+        "education_services": 108.58,
+        "restaurants_and_accommodation": 112.68,
+        "personal_care_and_misc": 123.51
+      },
+      "inflation": {
+        "food_and_beverages": 5.24,
+        "paan_tobacco_and_intoxicants": 4.79,
+        "clothing_and_footwear": 3.38,
+        "housing_water_electricity_gas_fuel": 2.16,
+        "furnishings_household_equipment": 2.4,
+        "health": 1.34,
+        "transport": 4.43,
+        "information_and_communication": 0.63,
+        "recreation_sport_and_culture": 1.64,
+        "education_services": 3.64,
+        "restaurants_and_accommodation": 7.72,
+        "personal_care_and_misc": 14.77
+      },
+      "headline_index": 107.94,
+      "headline_yoy": 4.45,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1786529680747_3113661d-1a2b-4b9a-af06-b340193ef9a0_Press_Release_CPI_July_2026.pdf"
+    },
+    "2026-08": {
+      "divisions": {
+        "food_and_beverages": 110.37,
+        "paan_tobacco_and_intoxicants": 108.44,
+        "clothing_and_footwear": 108.94,
+        "housing_water_electricity_gas_fuel": 104.16,
+        "furnishings_household_equipment": 105.65,
+        "health": 104.99,
+        "transport": 105.9,
+        "information_and_communication": 105.71,
+        "recreation_sport_and_culture": 105.03,
+        "education_services": 108.91,
+        "restaurants_and_accommodation": 113.61,
+        "personal_care_and_misc": 124.92
+      },
+      "inflation": {
+        "food_and_beverages": 5.66,
+        "paan_tobacco_and_intoxicants": 4.71,
+        "clothing_and_footwear": 3.56,
+        "housing_water_electricity_gas_fuel": 2.61,
+        "furnishings_household_equipment": 2.68,
+        "health": 1.34,
+        "transport": 4.6,
+        "information_and_communication": 2.01,
+        "recreation_sport_and_culture": 1.74,
+        "education_services": 3.73,
+        "restaurants_and_accommodation": 8.38,
+        "personal_care_and_misc": 15.17
+      },
+      "headline_index": 108.74,
+      "headline_yoy": 4.82,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1789381904344_6c792dcf-8a9f-4fca-93d3-99d833bdb358_Press_Release_of_CPI_for_August_2026.pdf"
+    },
+    "2026-09": {
+      "divisions": {
+        "food_and_beverages": 111.77,
+        "paan_tobacco_and_intoxicants": 108.72,
+        "clothing_and_footwear": 109.63,
+        "housing_water_electricity_gas_fuel": 104.41,
+        "furnishings_household_equipment": 106.15,
+        "health": 105.3,
+        "transport": 106.12,
+        "information_and_communication": 106.06,
+        "recreation_sport_and_culture": 105.51,
+        "education_services": 109.05,
+        "restaurants_and_accommodation": 114.79,
+        "personal_care_and_misc": 125.35
+      },
+      "inflation": {
+        "food_and_beverages": 7.36,
+        "paan_tobacco_and_intoxicants": 4.8,
+        "clothing_and_footwear": 3.93,
+        "housing_water_electricity_gas_fuel": 2.74,
+        "furnishings_household_equipment": 3.11,
+        "health": 1.4,
+        "transport": 5.01,
+        "information_and_communication": 2.44,
+        "recreation_sport_and_culture": 2.16,
+        "education_services": 3.94,
+        "restaurants_and_accommodation": 9.36,
+        "personal_care_and_misc": 13.75
+      },
+      "headline_index": 109.49,
+      "headline_yoy": 5.54,
+      "source": "https://www.mospi.gov.in/uploads/latestReleases/latest_release_1791800601071_643518af-5320-4e52-b78c-75c92b83885b_Press_Release_for_the_month_of_September,_2026.pdf"
     }
   }
 }

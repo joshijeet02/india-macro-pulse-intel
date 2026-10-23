@@ -38,6 +38,7 @@ from scrapers.mospi_iip import fetch_latest_iip  # noqa: E402
 from seed.historical_data import CPI_HISTORY, IIP_HISTORY  # noqa: E402
 
 UPDATES_PATH = ROOT / "data" / "release_updates.json"
+DIVISIONS_PATH = ROOT / "data" / "division_indices.json"
 
 # CLI exit codes
 EXIT_NEW = 0
@@ -167,6 +168,75 @@ def _refresh_indicator(
     return True, None
 
 
+def refresh_divisions(updates: dict) -> tuple[bool, Optional[str]]:
+    """
+    Parse division indices for every CPI month we hold but division_indices.json
+    does not.
+
+    The live index anchors on the newest month in that file. Until 23 Oct 2026
+    nothing on the schedule wrote it: this job added July, August and September
+    headline figures to release_updates.json, while the anchor sat on June and
+    the Nowcast tab kept estimating July three months after July was published.
+    Backfilling from the `source` PDF of each stored release closes that gap and
+    repairs any month a past run missed.
+
+    Each parse must pass mospi_divisions' rebuild check and name the same
+    reference month as the release it came from, or it is not stored.
+    """
+    from scrapers._mospi_api import DEFAULT_HEADERS
+    from scrapers._pdf_extract import fetch_pdf_bytes
+    from scrapers.mospi_divisions import parse_release_pdf
+
+    payload = (
+        json.loads(DIVISIONS_PATH.read_text()) if DIVISIONS_PATH.exists()
+        else {"_comment": "", "months": {}}
+    )
+    months = payload.setdefault("months", {})
+    # Only months NEWER than the latest stored one. Older gaps are deliberate:
+    # May 2026's PDF fails the rebuild check (only 8 of 12 rows extract) and
+    # was left out on purpose. Retrying it would open an issue every day.
+    newest = max(months) if months else ""
+    missing = [
+        e for e in updates.get("cpi", [])
+        if e.get("reference_month", "") > newest and e.get("source")
+    ]
+    if not missing:
+        log.info("Divisions: all stored CPI months already parsed")
+        return False, None
+
+    added, failures = False, []
+    for entry in sorted(missing, key=lambda e: e["reference_month"]):
+        month = entry["reference_month"]
+        try:
+            parsed = parse_release_pdf(fetch_pdf_bytes(entry["source"], DEFAULT_HEADERS, timeout=60))
+        except Exception as exc:
+            failures.append(f"{month}: {exc}")
+            continue
+        if parsed is None:
+            failures.append(f"{month}: parse rejected by rebuild check")
+            continue
+        if parsed["reference_month"] != month:
+            failures.append(f"{month}: PDF reads as {parsed['reference_month']}")
+            continue
+        months[month] = {
+            "divisions": parsed["divisions"],
+            "inflation": parsed["inflation"],
+            "headline_index": parsed["headline_index"],
+            "headline_yoy": parsed["headline_yoy"],
+            "source": entry["source"],
+        }
+        added = True
+        log.info(f"Divisions: ADDED {month} (headline index {parsed['headline_index']})")
+
+    if added:
+        payload["months"] = dict(sorted(months.items()))
+        tmp = DIVISIONS_PATH.with_suffix(DIVISIONS_PATH.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2) + "\n")
+        tmp.replace(DIVISIONS_PATH)
+        log.info(f"Wrote {DIVISIONS_PATH}")
+    return added, ("; ".join(failures) or None)
+
+
 def refresh_cpi(updates: dict, use_fixture: bool, api_releases=None) -> tuple[bool, Optional[str]]:
     return _refresh_indicator(updates, "CPI", fetch_latest_cpi, _normalize_cpi,
                               use_fixture, api_releases)
@@ -217,6 +287,15 @@ def main() -> int:
     if any_added and not args.dry_run:
         _save_updates(updates)
         log.info(f"Wrote {UPDATES_PATH}")
+
+    # Runs after the save, and even when no headline was new, so a month a
+    # previous run failed to parse is retried every day until it lands.
+    if not args.iip_only and not args.use_fixture and not args.dry_run:
+        added, err = refresh_divisions(updates)
+        any_added |= added
+        if err:
+            log.error(f"Division parse failure: {err}")
+            any_failed = True
 
     # Exit code precedence: partial > pure-fail > new > nochange
     if any_added and any_failed:

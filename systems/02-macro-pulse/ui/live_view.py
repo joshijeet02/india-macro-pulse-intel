@@ -87,7 +87,7 @@ def render_live_index():
         )
 
     if go:
-        label = "Fetching prices…" if not include_grocery else "Fetching — grocery scrape takes 2–3 min…"
+        label = "Fetching prices…" if not include_grocery else "Fetching. The grocery scrape takes 2 to 3 minutes…"
         with st.spinner(label):
             current, relatives, first = fetch_and_measure(include_slow=include_grocery)
         st.session_state["live_result"] = {
@@ -154,14 +154,14 @@ def render_live_index():
         # column below, so the page reads as one layout rather than two.
         a, b, c, _ = st.columns([1, 1, 1, 1.4])
         a.metric(
-            f"{pretty_month(target)} CPI — estimate",
+            f"{pretty_month(target)} CPI, estimate",
             f"{estimate}%",
             help=f"Year-on-year, the figure MOSPI prints. Assumes {mom_value:+.2f}% "
                  f"month-on-month: {mom_basis}.",
         )
         if last_print is not None:
             b.metric(
-                f"{pretty_month(live.anchor_month)} — published",
+                f"{pretty_month(live.anchor_month)}, published",
                 f"{last_print}%",
                 help="The last official print, for comparison.",
             )
@@ -200,7 +200,7 @@ def render_live_index():
                     f"**Measured, not assumed:** gold and silver averaged "
                     f"₹{bullion['from_inr_per_gram']:,.0f}/g across "
                     f"{pretty_month(live.anchor_month)} and "
-                    f"₹{bullion['to_inr_per_gram']:,.0f}/g across {pretty_month(target)} — "
+                    f"₹{bullion['to_inr_per_gram']:,.0f}/g across {pretty_month(target)}: "
                     f"**{bullion['mom_pct']:+.2f}%**, observed from daily prices. That "
                     f"covers {comp.measured_weight:.2f}% of the basket and pulls the "
                     f"estimate from {live.yoy_for_mom(assumed, base_level)}% to "
@@ -210,12 +210,13 @@ def render_live_index():
             # Leads with the sentence carrying the claim; the full argument
             # stays one click away rather than as another dense block.
             if last_print is not None:
-                needed = live.mom_needed_for(last_print, base_level)
+                # round() then "or 0.0" so a rounded zero never prints as -0.00%.
+                needed = round(live.mom_needed_for(last_print, base_level), 2) or 0.0
                 direction = "below" if estimate < last_print else "above"
                 st.info(
                     f"**{pretty_month(target)} is tracking "
                     f"{abs(estimate - last_print):.2f}pp {direction} "
-                    f"{pretty_month(live.anchor_month)}'s {last_print}%** — because "
+                    f"{pretty_month(live.anchor_month)}'s {last_print}%**, because "
                     f"{pretty_month(base_month_for(target))} indexed {base_level}, and "
                     f"{pretty_month(target)} has to move {needed:+.2f}% month-on-month "
                     f"just to hold the rate steady."
@@ -228,13 +229,13 @@ def render_live_index():
                         f"**{base_level}**, so {pretty_month(target)} must move "
                         f"**{needed:+.2f}% month-on-month just to hold {last_print}%**. "
                         f"Flat prices print lower. That base is already published and "
-                        f"cannot change — it is the most predictable part of the next "
+                        f"cannot change, so it is the most predictable part of the next "
                         f"release.\n\n"
                         f"On the other side, we put **{mom_value:+.2f}% month-on-month** "
                         f"on the month: {comp.measured_weight:.2f}% of the basket "
                         f"measured, the remaining {comp.assumed_weight:.1f}% assumed at "
                         f"{assumed:+.2f}% ({mom_basis}). Flat prices would print "
-                        f"{flat}%, but flat is not a neutral guess — over 14 months it "
+                        f"{flat}%, but flat is not a neutral guess: over 14 months it "
                         f"was the worst of five estimators tested, and recent months ran "
                         f"+0.26%, +0.75% and +1.04%."
                     )
@@ -254,9 +255,22 @@ def render_live_index():
                     f"is {agreement} it"
                     + (f", by {abs(gap_to_street):.2f}pp"
                        if agreement != "in line with" else "")
-                    + f".\n\nWe get there from our own month-on-month data — "
-                    f"{mom_basis} — not by anchoring to the poll. "
+                    + f".\n\nWe get there from our own month-on-month data ("
+                    f"{mom_basis}), not by anchoring to the poll. "
                     f"{street['note']} _Source: {street['source']}._"
+                )
+            else:
+                # Say so rather than drop the box. A missing consensus line read
+                # as an oversight; a stated one tells the visitor where things are.
+                last_poll = CONSENSUS.get(live.anchor_month)
+                st.info(
+                    f"**No street consensus for {pretty_month(target)} yet.** "
+                    f"Economists' polls usually appear a few days before the release."
+                    + (f" For {pretty_month(live.anchor_month)}, the poll expected "
+                       f"{last_poll['low']}% and the official print was "
+                       f"{last_poll.get('actual', last_print)}%. "
+                       f"_Source: {last_poll['source']}._"
+                       if last_poll else "")
                 )
 
             release_month = _MONTHS[next_month_after(target).split("-")[1]]
@@ -281,7 +295,7 @@ def render_live_index():
         st.caption(
             f"Showing the last published position ({pretty_month(live.anchor_month)} = "
             f"index {live.anchor_index}). Press **Refresh prices** to fold in today's "
-            f"gold, silver and fuel — about a second."
+            f"gold, silver and fuel. It takes about a second."
             + (f" {len(snapshots)} snapshot(s) on record." if snapshots else "")
         )
         return
@@ -292,7 +306,7 @@ def render_live_index():
 
     if result["first"] or not relatives:
         st.warning(
-            "**First fetch — this sets the reference, it does not measure yet.** There "
+            "**First fetch. This sets the reference; it does not measure yet.** There "
             "is no earlier snapshot to compare against, so no price movement is claimed. "
             "Refresh again later and this becomes a real reading."
         )
@@ -304,7 +318,7 @@ def render_live_index():
         f"**{live.observed_weight:.1f}% of the basket repriced** from live sources; the "
         f"rest carried at its last published level."
         + (f" The {gap} between that month ending and our first observation are "
-           f"unmeasured — treated as flat because we were not yet watching." if gap else "")
+           f"unmeasured, treated as flat because we were not yet watching." if gap else "")
     )
 
     with st.expander("Division detail"):
@@ -315,7 +329,7 @@ def render_live_index():
                 "We price": f"{r.tracked_share:.0%}",
                 "Anchor": round(r.anchor_index, 2),
                 "Live": round(r.live_index, 2),
-                "Move": f"{r.pct_change:+.2f}%" if r.observed else "—",
+                "Move": f"{r.pct_change:+.2f}%" if r.observed else "n/a",
                 "Source": "measured" if r.observed else "carried",
             } for r in live.readings]),
             use_container_width=True, hide_index=True,
@@ -332,12 +346,12 @@ def render_live_index():
                     "Division": _PRETTY.get(division, division),
                     "Item": item_id,
                     "Price now": round(price, 2),
-                    "Reference": round(prior, 2) if prior else "—",
+                    "Reference": round(prior, 2) if prior else "n/a",
                     "Change": f"{(price / prior - 1) * 100:+.2f}%" if prior else "new",
                 })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         st.caption(
             "Each division's move is the geometric mean of the ratios above, over items "
-            "priced in BOTH periods. Items marked 'new' set their own reference — a "
+            "priced in BOTH periods. Items marked 'new' set their own reference, because a "
             "product that changes must never register as a price move."
         )

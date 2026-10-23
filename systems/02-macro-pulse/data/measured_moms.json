@@ -8,6 +8,14 @@
       "to_inr_per_gram": 10711.74,
       "mom_pct": -3.331,
       "measured_at": "2026-10-23 05:49:39"
+    },
+    "2026-09->2026-10": {
+      "from_month": "2026-09",
+      "to_month": "2026-10",
+      "from_inr_per_gram": 11423.79,
+      "to_inr_per_gram": 10879.07,
+      "mom_pct": -4.768,
+      "measured_at": "2026-10-23 16:25:50"
     }
   }
 }

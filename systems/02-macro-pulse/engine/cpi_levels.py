@@ -163,6 +163,17 @@ CONSENSUS = {
             "December; RBI's own projection is 5.1%."
         ),
     },
+    # No October 2026 poll exists yet (checked 23 Oct 2026). Reuters runs one
+    # in the days before the 12 November release; add it here when it lands.
+    # Until then the Nowcast shows how the last poll fared instead.
+    "2026-09": {
+        "low": 5.4,
+        "high": 5.4,
+        "actual": 5.54,
+        "source": "Reuters poll of economists, reported with the 12 Oct 2026 release",
+        "as_of": "2026-10",
+        "note": "The print came in at 5.54%, above the poll.",
+    },
 }
 
 
