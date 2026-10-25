@@ -1879,6 +1879,27 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-10-25 05:47:47",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 12200.1,
+          "silver_per_gram": 164.97
+        },
+        "food_and_beverages": {
+          "banana::banana_plant_fresh_yellow_fruit_bunch": 209.0,
+          "apple::wevym_4_pcs_plastoware_apple_banana": 299.0,
+          "sugar::fortune_sugar_1_kg": 61.0,
+          "turmeric::everest_turmeric_powder_200gm_pure_fine": 430.0,
+          "coriander_powder::catch_coriander_powder_dhaniya_powder_200g": 250.0,
+          "tea::society_tea_society_leaf_tea_250g": 612.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
