@@ -2032,6 +2032,23 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-11-02 07:21:25",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 11930.92,
+          "silver_per_gram": 154.11
+        },
+        "food_and_beverages": {
+          "chana_dal::tata_sampann_organic_unpolished_chana_dal": 170.0,
+          "sunflower_oil::jivo_first_pressed_sunflower_oil_1": 219.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
