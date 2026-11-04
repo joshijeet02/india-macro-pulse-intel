@@ -2062,6 +2062,23 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-11-04 07:18:56",
+      "prices": {
+        "food_and_beverages": {
+          "onion::veeba_chef_s_special_tomato_ketchup": 130.0,
+          "potato::balasa_red_chilli_potato_papad_180g": 149.0,
+          "sugar::conscious_food_natural_raw_sugar_1": 175.0,
+          "turmeric::kalprishi_haldi_powder_200g_pack_of": 365.0,
+          "coriander_powder::tata_sampann_coriander_powder_with_natural": 420.0,
+          "tea::society_tea_society_leaf_tea_250g": 620.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
