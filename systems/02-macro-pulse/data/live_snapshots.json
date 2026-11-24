@@ -2442,6 +2442,29 @@
           "diesel_per_litre": 95.2
         }
       }
+    },
+    {
+      "fetched_at": "2026-11-24 10:44:42",
+      "prices": {
+        "personal_care_and_misc": {
+          "gold_per_gram": 10828.15,
+          "silver_per_gram": 125.12
+        },
+        "food_and_beverages": {
+          "onion::small_onion_flush_farm_flesh_sambar": 170.0,
+          "potato::1kg_baby_potatoes_fresh_vegetables_chota": 199.0,
+          "banana::banana_plant_fresh_yellow_fruit_bunch": 109.0,
+          "apple::renuka_nursery_apple_fruit_plant_suitable": 349.0,
+          "sugar::premium_refined_sugar_1kg_chini_pure": 79.0,
+          "turmeric::tata_sampann_turmeric_powder_with_natural": 425.0,
+          "coriander_powder::catch_coriander_powder_dhaniya_powder_200g": 250.0,
+          "tea::tata_tea_gold_250_gram_assam": 628.0
+        },
+        "transport": {
+          "petrol_per_litre": 102.12,
+          "diesel_per_litre": 95.2
+        }
+      }
     }
   ]
 }
